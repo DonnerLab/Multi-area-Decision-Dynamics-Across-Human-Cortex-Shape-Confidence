@@ -1,5 +1,3 @@
-# Multi-area-Decision-Dynamics-Across-Human-Cortex-Shape-Confidence
-
 # Multi-area Decision Dynamics Across Human Cortex Shape Confidence
 
 This repository contains the MATLAB code used to reproduce the analyses and figures reported in:
@@ -160,7 +158,7 @@ functions/decoder/
 
 These functions operate on source-reconstructed MEG activity and generate decoder outputs used throughout the manuscript.
 The decoding framework supports both Unilateral and Bilateral ROI analyses.
-The processed decoder outputs necessary to reproduce the published figures are included in the repository.
+The processed decoder outputs necessary to reproduce the published figures are included in the repository (under data/).
 
 ---
 
@@ -203,7 +201,7 @@ https://www.nitrc.org/projects/gifti/
 5. Add the `functions/` directory to the MATLAB path.
 6. Run the scripts contained in the corresponding `Figure_*` directories.
 
-The figure scripts are organized to reproduce the analyses and visualizations reported in the manuscript.
+The figure scripts are organized to reproduce the analyses reported in the manuscript.
 
 ---
 
