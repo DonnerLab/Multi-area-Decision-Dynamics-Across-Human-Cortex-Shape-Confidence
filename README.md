@@ -46,7 +46,7 @@ Each figure directory contains the MATLAB scripts used to reproduce the correspo
 
 The behavioral and processed MEG datasets required to reproduce the analyses can be downloaded from:
 
-(insert link)
+https://figshare.com/s/96510af31ee742b4498e
 
 After downloading, place the data into the repository `data/` directory while preserving the original folder structure.
 
