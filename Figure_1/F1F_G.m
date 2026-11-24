@@ -1,561 +1,270 @@
 %% =======================================================================
-% Figure 1F-G: Plot PK analyses with confidence
+% Figure 1F-G
 %% =======================================================================
 
 clear all
 close all
 
+
+%% =======================================================================
+% PATHS
+%% =======================================================================
+
 % Folder where this script is located
 scriptFolder = fileparts(mfilename('fullpath'));
+if isempty(scriptFolder), scriptFolder = pwd; end
 
-% Go up two folders 
-projectFolder = fileparts(fileparts(scriptFolder));
+% Go up one folder (repository root)
+projectFolder = fileparts(scriptFolder);
 
-% Path to model results
+% Path to model results (behavior + model predictions of each subject)
 modelFolder = fullfile(projectFolder, 'data', 'model', 'results');
 
 % Path to functions
-functionsFolder = fullfile(projectFolder, 'functions');
-addpath(functionsFolder);
+addpath(fullfile(projectFolder, 'functions'));
+
+
+%% =======================================================================
+% SETTINGS
+%% =======================================================================
+
+nSubjects     = 20;
+nSamples      = 10;
+nSimulations  = 150;      % simulated choice/confidence reports per trial
+nPermutations = 10000;   % permutations of the permutation tests
+
+% Kernels: subjects x samples x confidence (1 = low, 2 = high)
+kernel_selected          = nan(nSubjects,nSamples,2);
+kernel_nonSelected       = nan(nSubjects,nSamples,2);
+kernel_selected_model    = nan(nSubjects,nSamples,2);
+kernel_nonSelected_model = nan(nSubjects,nSamples,2);
 
 
 %% =======================================================================
 % MAIN LOOP ACROSS SUBJECTS
 %% =======================================================================
 
-for subject = 1:20
-    
+for subject = 1:nSubjects
+
     %% ===================================================================
-    % LOAD MODEL + BEHAVIORAL DATA
+    % LOAD SUBJECT DATA
+    %
+    % All_right / All_left : trials x samples contrasts
+    % All_Conf             : model probabilities of
+    %                        [right/high, right/low, left/high, left/low]
+    % Real_data            : [choice, confidence, RT, generative mean]
     %% ===================================================================
-    
+
     load(fullfile( ...
         modelFolder, ...
         ['All_data_model_9_sbj_' num2str(subject) '.mat']));
-    
-    
+
+    % Participant choice (1 = right, 0 = left) and confidence (1 = high, 0 = low)
+    realChoice     = Real_data(:,1);
+    realConfidence = Real_data(:,2) - 1;
+
+    % Contrast fluctuations around the generative mean of each side
+    generativeMean   = Real_data(:,4);
+    fluctuationRight = All_right - (0.5 + generativeMean ./ 2);
+    fluctuationLeft  = All_left  - (0.5 - generativeMean ./ 2);
+
+
     %% ===================================================================
-    % GENERATIVE MEAN FOR EACH TRIAL
-    %% ===================================================================
-    
-    generativeMean_trial = Real_data(:,4);
-    
-    
-    %% ===================================================================
-    % MODEL INPUT
-    %% ===================================================================
-    
-    simulationInput.t     = 10;
-    simulationInput.right = All_right';
-    simulationInput.left  = All_left';
-    simulationInput.rt    = Real_data(:,3);
-    
-    
-    %% ===================================================================
-    % SIMULATED CONFIDENCE REPORTS
+    % SIMULATED CHOICE/CONFIDENCE REPORTS
     %
-    % Build multinomial samples from model confidence probabilities
+    % simulatedCounts(trial,k): number of simulations (out of
+    % nSimulations) in which the model gave report k
+    % k: 1 = right/high, 2 = right/low, 3 = left/high, 4 = left/low
     %% ===================================================================
-    
-    simulatedConfidenceChoices = [];
-    
-    for trial = 1:size(All_ch_model,1)
-        
-        simulatedConfidenceChoices(:,trial,:) = ...
-            mnrnd(1, All_Conf(trial,:), 150);
-        
-    end
-    
-    simulatedConfidenceChoices = ...
-        permute(simulatedConfidenceChoices, [3,2,1]);
-    
-    
+
+    modelProbabilities = abs(All_Conf) ./ sum(abs(All_Conf),2);
+    simulatedCounts    = mnrnd(nSimulations, modelProbabilities);
+
+
     %% ===================================================================
-    % LOOP OVER CHOICE AND SIDE
+    % KERNELS FOR LOW (1) AND HIGH (2) CONFIDENCE
     %
-    % choice:
-    % 1 = right choice
-    % 2 = left choice
-    %
-    % side:
-    % 1 = left stimulus
-    % 2 = right stimulus
-    %% ===================================================================
     
-    for choice = 1:2
-        
-        for side = 1:2
-            
-            %% ============================================================
-            % SELECT SIDE-SPECIFIC CONTRASTS
-            %% ============================================================
-            
-            if side == 1
-                
-                stimulusFluctuations = All_left;
-                stimulusFluctuations_model = All_left;
-                
-                % Generative mean for left side
-                generativeMean = 0.5 - generativeMean_trial ./ 2;
-                
-            else
-                
-                stimulusFluctuations = All_right;
-                stimulusFluctuations_model = All_right;
-                
-                % Generative mean for right side
-                generativeMean = 0.5 + generativeMean_trial ./ 2;
-                
-            end
-            
-            
-            %% ============================================================
-            % EXPAND VARIABLES FOR MODEL SIMULATIONS
-            %% ============================================================
-            
-            stimulusFluctuations_model = ...
-                repmat(stimulusFluctuations_model, [1,1,150]);
-            stimulusFluctuations_model = ...
-                permute(stimulusFluctuations_model, [2,1,3]);
-            
-            generativeMean_model = ...
-                repmat(generativeMean, [1,1,150]);
-            generativeMean_model = ...
-                permute(generativeMean_model, [2,1,3]);
-            
-            stimulusFluctuations = ...
-                repmat(stimulusFluctuations, [1,1,150]);
-            stimulusFluctuations = ...
-                permute(stimulusFluctuations, [2,1,3]);
-            
-            
-            %% ============================================================
-            % REAL CHOICE + CONFIDENCE
-            %% ============================================================
-            
-            realChoice = Real_data(:,1);
-            realConfidence = Real_data(:,2) - 1;
-            
-            realChoice = repmat(realChoice, [1,1,150]);
-            realChoice = permute(realChoice, [2,1,3]);
-            
-            realConfidence = repmat(realConfidence, [1,1,150]);
-            realConfidence = permute(realConfidence, [2,1,3]);
-            
-            
-            %% ============================================================
-            % CONFIDENCE MAPPING
-            %% ============================================================
-            
-            confidenceMap = [2 1; 4 3];
-            
-            
-            %% ============================================================
-            % LOOP OVER LOW / HIGH CONFIDENCE
-            %% ============================================================
-            
-            for confidenceLevel = 1:2
-                
-                if choice == 1
-                    
-                    % Real data
-                    selectedTrials = ...
-                        (realChoice == 1 & ...
-                         realConfidence == confidenceLevel - 1);
-                    
-                    % Model
-                    selectedTrials_model = ...
-                        (simulatedConfidenceChoices( ...
-                            confidenceMap(1, confidenceLevel), :, :) == 1);
-                    
-                else
-                    
-                    % Real data
-                    selectedTrials = ...
-                        (realChoice == 0 & ...
-                         realConfidence == confidenceLevel - 1);
-                    
-                    % Model
-                    selectedTrials_model = ...
-                        (simulatedConfidenceChoices( ...
-                            confidenceMap(2, confidenceLevel), :, :) == 1);
-                    
-                end
-                
-                
-                %% ========================================================
-                % COMPUTE CONTRAST FLUCTUATIONS
-                %% ========================================================
-                
-                contrastFluctuation_model = mean( ...
-                    (stimulusFluctuations_model(:,selectedTrials_model))' ...
-                    - generativeMean_model(selectedTrials_model), ...
-                    1);
-                
-                contrastFluctuation_real = mean( ...
-                    (stimulusFluctuations(:,selectedTrials))' ...
-                    - generativeMean_model(selectedTrials), ...
-                    1);
-                
-                
-                %% ========================================================
-                % STORE PKS
-                %% ========================================================
-                
-                PK_all(subject,:,1,choice,side,confidenceLevel) = ...
-                    contrastFluctuation_real(1:10);
-                
-                PK_all_model(subject,:,1,choice,side,confidenceLevel) = ...
-                    contrastFluctuation_model;
-                
-                PK_both(subject,:,1,confidenceLevel,side,choice) = ...
-                    contrastFluctuation_real;
-                
-                PK_both_model(subject,:,1,confidenceLevel,side,choice) = ...
-                    contrastFluctuation_model;
-                
-            end
+    %% ===================================================================
+
+    for confidenceLevel = 1:2
+
+        % Data
+        rightTrials = realChoice == 1 & realConfidence == confidenceLevel - 1;
+        leftTrials  = realChoice == 0 & realConfidence == confidenceLevel - 1;
+
+        kernel_selected(subject,:,confidenceLevel) = mean([ ...
+            mean(fluctuationRight(rightTrials,:),1); ...
+            mean(fluctuationLeft(leftTrials,:),1)], 1);
+
+        kernel_nonSelected(subject,:,confidenceLevel) = mean([ ...
+            mean(fluctuationLeft(rightTrials,:),1); ...
+            mean(fluctuationRight(leftTrials,:),1)], 1);
+
+        % Model (low confidence: reports 2 and 4, high: reports 1 and 3)
+        if confidenceLevel == 1
+            rightCounts = simulatedCounts(:,2);
+            leftCounts  = simulatedCounts(:,4);
+        else
+            rightCounts = simulatedCounts(:,1);
+            leftCounts  = simulatedCounts(:,3);
         end
+
+        kernel_selected_model(subject,:,confidenceLevel) = mean([ ...
+            (rightCounts' * fluctuationRight) ./ sum(rightCounts); ...
+            (leftCounts'  * fluctuationLeft)  ./ sum(leftCounts)], 1);
+
+        kernel_nonSelected_model(subject,:,confidenceLevel) = mean([ ...
+            (rightCounts' * fluctuationLeft)  ./ sum(rightCounts); ...
+            (leftCounts'  * fluctuationRight) ./ sum(leftCounts)], 1);
+
     end
+
 end
 
 
 %% =======================================================================
-% COLORS
-%% =======================================================================
-
-lightBlue = [0 162 255] ./ 255;
-
+% CONFIDENCE KERNEL ASYMMETRY (Figure 1G)
+%
 
 %% =======================================================================
-% EXTRACT PK FOR SELECTED / NON-SELECTED SIDE
-%% =======================================================================
 
-% REAL DATA
-PK_selected = cat(3, ...
-    PK_all(:,:,:,1,2,:), ...
-    PK_all(:,:,:,2,1,:));
+asymmetry = ...
+    abs(kernel_selected(:,:,2)    - kernel_selected(:,:,1)) - ...
+    abs(kernel_nonSelected(:,:,2) - kernel_nonSelected(:,:,1));
 
-PK_selected = ...
-    PK_selected(:,:,:,:,:,2) - PK_selected(:,:,:,:,:,1);
+asymmetry_model = ...
+    abs(kernel_selected_model(:,:,2)    - kernel_selected_model(:,:,1)) - ...
+    abs(kernel_nonSelected_model(:,:,2) - kernel_nonSelected_model(:,:,1));
 
-PK_selected = mean(PK_selected,3);
+pValues = nan(1,nSamples);
 
+for sample = 1:nSamples
+    pValues(sample) = permutationTest( ...
+        asymmetry(:,sample), ...
+        zeros(nSubjects,1), ...
+        nPermutations);
+end
 
-PK_nonSelected = cat(3, ...
-    PK_all(:,:,:,1,1,:), ...
-    PK_all(:,:,:,2,2,:));
-
-PK_nonSelected = ...
-    PK_nonSelected(:,:,:,:,:,2) - PK_nonSelected(:,:,:,:,:,1);
-
-PK_nonSelected = mean(PK_nonSelected,3);
-
-
-% MODEL
-PK_selected_model = cat(3, ...
-    PK_all_model(:,:,:,1,2,:), ...
-    PK_all_model(:,:,:,2,1,:));
-
-PK_selected_model = ...
-    PK_selected_model(:,:,:,:,:,2) - PK_selected_model(:,:,:,:,:,1);
-
-PK_selected_model = mean(PK_selected_model,3);
-
-
-PK_nonSelected_model = cat(3, ...
-    PK_all_model(:,:,:,1,1,:), ...
-    PK_all_model(:,:,:,2,2,:));
-
-PK_nonSelected_model = ...
-    PK_nonSelected_model(:,:,:,:,:,2) - PK_nonSelected_model(:,:,:,:,:,1);
-
-PK_nonSelected_model = mean(PK_nonSelected_model,3);
+significantSamples = double(fdr_bh(pValues,0.05));
+significantSamples(significantSamples == 0) = nan;
 
 
 %% =======================================================================
-% FIGURE 1 - DIFFERENCE BETWEEN SELECTED AND NON-SELECTED SIDE
+% FIGURE 1 (Figure 1G) - CONFIDENCE KERNEL ASYMMETRY
 %% =======================================================================
 
-close all
+gray = [0.5 0.5 0.5];
+
 figure(1)
 hold on
 
-AUC = [];
-AUC_model = [];
-
-for sample = 1:10
-    
-    AUC(:,sample) = ...
-        abs(PK_selected(:,sample)) - abs(PK_nonSelected(:,sample));
-    
-    AUC_model(:,sample) = ...
-        abs(PK_selected_model(:,sample)) - ...
-        abs(PK_nonSelected_model(:,sample));
-    
-    
-    e = errorbar( ...
-        sample, ...
-        nanmean(AUC(:,sample),1), ...
-        nanstd(AUC(:,sample))./sqrt(20), ...
-        'color','k', ...
-        'linewidth',5, ...
-        'linestyle','none');
-    
-    e.CapSize = 0;
-    
-    scatter( ...
-        sample, ...
-        nanmean(AUC(:,sample),1), ...
-        80, ...
-        'k', ...
-        'filled', ...
-        'MarkerEdgeColor',[1 1 1]);
-    
-    
-    pValues(sample) = permutationTest( ...
-        AUC(:,sample), ...
-        zeros(20,1), ...
-        100000);
-    
-end
-
-
-significantP = double(fdr_bh(pValues,0.05));
-significantP(significantP == 0) = nan;
-significantP(significantP == 1) = 0.05;
-
-
-shadedErrorBar( ...
-    1:10, ...
-    nanmean(AUC_model,1), ...
-    nanstd(AUC_model,0,1)./sqrt(size(AUC_model,1)), ...
-    'lineProps',{'.-','color','k'});
+% Data: group average +/- SEM
+e = errorbar( ...
+    1:nSamples, ...
+    nanmean(asymmetry,1), ...
+    nanstd(asymmetry,0,1) ./ sqrt(nSubjects), ...
+    'color', 'k', ...
+    'linewidth', 5, ...
+    'linestyle', 'none');
+e.CapSize = 0;
 
 scatter( ...
-    1:10, ...
-    significantP ./ 3, ...
+    1:nSamples, ...
+    nanmean(asymmetry,1), ...
+    80, ...
+    'k', ...
+    'filled', ...
+    'MarkerEdgeColor', [1 1 1]);
+
+% Model: group average +/- SEM
+shadedErrorBar( ...
+    1:nSamples, ...
+    nanmean(asymmetry_model,1), ...
+    nanstd(asymmetry_model,0,1) ./ sqrt(nSubjects), ...
+    'lineProps', {'.-','color','k'});
+
+% Significant samples (p < 0.05, FDR-corrected)
+scatter( ...
+    1:nSamples, ...
+    significantSamples .* (0.05/3), ...
     80, ...
     'k', ...
     'square', ...
     'filled');
 
-ylabel({'Excess contrast'; '(high confidence - low confidence)'})
+yline(0,'--','color',gray);
+
+xticks(1:nSamples)
+xlim([0 nSamples+1])
+ylabel({'Confidence kernel asymmetry'; '|1-2| - |4-3|'})
 xlabel('Sample number')
-
-xticks(1:10)
-xlim([0 11])
-
 set(gca,'fontsize',15)
 
 
 %% =======================================================================
-% FIGURE 2 - PLOT EACH PSYCHOPHYSICAL KERNEL (PK)
+% FIGURE 2 (Figure 1F) - THE FOUR KERNELS
 %
-% side = 1 --> selected side
-% side = 2 --> non-selected side
-%
-% Low vs High confidence
-% Real data + model predictions
+%   1 = selected, high confidence        (gray)
+%   2 = selected, low confidence         (black)
+%   3 = non-selected, low confidence     (dark blue)
+%   4 = non-selected, high confidence    (light blue)
 %% =======================================================================
 
+% Colors: rows = low / high confidence
+colors_selected    = [0 0 0; gray];
+colors_nonSelected = [0 0.4470 0.7410; [0 162 255] ./ 255];
+
 figure(2)
-clf
+hold on
 
 for side = 1:2
-    
-    hold on
-    
-    
-    %% ===================================================================
-    % SIDE 1
-    %% ===================================================================
-    
+
     if side == 1
-        
-        % ---------------------------------------------------------------
-        % REAL DATA
-        % ---------------------------------------------------------------
-        
-        PK_selectedSide = cat( ...
-            5, ...
-            PK_both(:,:,1,:,1,1), ...
-            PK_both(:,:,1,:,2,2));
-        
-        
-        % Low confidence
-        e = errorbar( ...
-            1:10, ...
-            nanmean(PK_selectedSide(:,:,1,1),1), ...
-            nanstd(PK_selectedSide(:,:,1,1))./sqrt(20), ...
-            'color', [0 0.4470 0.7410], ...
-            'linewidth', 5, ...
-            'linestyle', 'none');
-        
-        e.CapSize = 0;
-        
-        scatter( ...
-            1:10, ...
-            nanmean(PK_selectedSide(:,:,1,1),1), ...
-            80, ...
-            [0 0.4470 0.7410], ...
-            'filled', ...
-            'MarkerEdgeColor', [1 1 1]);
-        
-        
-        % High confidence
-        e = errorbar( ...
-            1:10, ...
-            nanmean(PK_selectedSide(:,:,1,2),1), ...
-            nanstd(PK_selectedSide(:,:,1,2))./sqrt(20), ...
-            'color', lightBlue, ...
-            'linewidth', 5, ...
-            'linestyle', 'none');
-        
-        e.CapSize = 0;
-        
-        scatter( ...
-            1:10, ...
-            nanmean(PK_selectedSide(:,:,1,2),1), ...
-            80, ...
-            lightBlue, ...
-            'filled', ...
-            'MarkerEdgeColor', [1 1 1], ...
-            'markerfacealpha', 0.5);
-        
-        
-        % ---------------------------------------------------------------
-        % MODEL
-        % ---------------------------------------------------------------
-        
-        PK_selectedSide_model = cat( ...
-            5, ...
-            PK_both_model(:,:,1,:,1,1), ...
-            PK_both_model(:,:,1,:,2,2));
-        
-        
-        % Low confidence
-        shadedErrorBar( ...
-            1:10, ...
-            nanmean( ...
-                nanmean(PK_selectedSide_model(:,:,1,1,:),5),1), ...
-            nanstd( ...
-                nanmean(PK_selectedSide_model(:,:,1,1,:),5),0,1) ...
-                ./ sqrt(size(PK_selectedSide_model,1)), ...
-            'lineProps', {'-','color',[0 0.4470 0.7410]});
-        
-        
-        % High confidence
-        shadedErrorBar( ...
-            1:10, ...
-            nanmean( ...
-                nanmean(PK_selectedSide_model(:,:,1,2,:),5),1), ...
-            nanstd( ...
-                nanmean(PK_selectedSide_model(:,:,1,2,:),5),0,1) ...
-                ./ sqrt(size(PK_selectedSide_model,1)), ...
-            'lineProps', {'-','color', lightBlue});
-        
-        
-    %% ===================================================================
-    % SIDE 2
-    %% ===================================================================
-    
+        kernel_data  = kernel_selected;
+        kernel_model = kernel_selected_model;
+        colors       = colors_selected;
     else
-        
-        % ---------------------------------------------------------------
-        % REAL DATA
-        % ---------------------------------------------------------------
-        
-        PK_nonSelectedSide = cat( ...
-            5, ...
-            PK_both(:,:,1,:,1,2), ...
-            PK_both(:,:,1,:,2,1));
-        
-        
-        % Low confidence
-        e = errorbar( ...
-            1:10, ...
-            nanmean(PK_nonSelectedSide(:,:,1,1),1), ...
-            nanstd(PK_nonSelectedSide(:,:,1,1))./sqrt(20), ...
-            'color', 'k', ...
-            'linewidth', 5, ...
-            'linestyle', 'none');
-        
-        e.CapSize = 0;
-        
-        scatter( ...
-            1:10, ...
-            nanmean(PK_nonSelectedSide(:,:,1,1),1), ...
-            80, ...
-            'k', ...
-            'filled', ...
-            'MarkerEdgeColor', [1 1 1]);
-        
-        
-        % High confidence
-        e = errorbar( ...
-            1:10, ...
-            nanmean(PK_nonSelectedSide(:,:,1,2),1), ...
-            nanstd(PK_nonSelectedSide(:,:,1,2))./sqrt(20), ...
-            'color', [0.5 0.5 0.5], ...
-            'linewidth', 5, ...
-            'linestyle', 'none');
-        
-        e.CapSize = 0;
-        
-        scatter( ...
-            1:10, ...
-            nanmean(PK_nonSelectedSide(:,:,1,2),1), ...
-            80, ...
-            [0.5 0.5 0.5], ...
-            'filled', ...
-            'MarkerEdgeColor', [1 1 1]);
-        
-        
-        % ---------------------------------------------------------------
-        % MODEL
-        % ---------------------------------------------------------------
-        
-        PK_nonSelectedSide_model = cat( ...
-            5, ...
-            PK_both_model(:,:,1,:,1,2), ...
-            PK_both_model(:,:,1,:,2,1));
-        
-        
-        % Low confidence
-        shadedErrorBar( ...
-            1:10, ...
-            nanmean( ...
-                nanmean(PK_nonSelectedSide_model(:,:,1,1,:),5),1), ...
-            nanstd( ...
-                nanmean(PK_nonSelectedSide_model(:,:,1,1,:),5),0,1) ...
-                ./ sqrt(size(PK_nonSelectedSide_model,1)), ...
-            'lineProps', {'-','color','k'});
-        
-        
-        % High confidence
-        shadedErrorBar( ...
-            1:10, ...
-            nanmean( ...
-                nanmean(PK_nonSelectedSide_model(:,:,1,2,:),5),1), ...
-            nanstd( ...
-                nanmean(PK_nonSelectedSide_model(:,:,1,2,:),5),0,1) ...
-                ./ sqrt(size(PK_nonSelectedSide_model,1)), ...
-            'lineProps', {'-','color',[0.5 0.5 0.5]});
-        
+        kernel_data  = kernel_nonSelected;
+        kernel_model = kernel_nonSelected_model;
+        colors       = colors_nonSelected;
     end
-    
-    
-    %% ===================================================================
-    % AXIS SETTINGS
-    %% ===================================================================
-    
-    ylabel('Excess contrast')
-    xlabel('Sample N')
-    
-    xticks(1:10)
-    xlim([0 11])
-    
-    set(gca,'fontsize',15)
-    
+
+    for confidenceLevel = 1:2
+
+        % Data: group average +/- SEM
+        e = errorbar( ...
+            1:nSamples, ...
+            nanmean(kernel_data(:,:,confidenceLevel),1), ...
+            nanstd(kernel_data(:,:,confidenceLevel),0,1) ./ sqrt(nSubjects), ...
+            'color', colors(confidenceLevel,:), ...
+            'linewidth', 5, ...
+            'linestyle', 'none');
+        e.CapSize = 0;
+
+        scatter( ...
+            1:nSamples, ...
+            nanmean(kernel_data(:,:,confidenceLevel),1), ...
+            80, ...
+            colors(confidenceLevel,:), ...
+            'filled', ...
+            'MarkerEdgeColor', [1 1 1]);
+
+        % Model: group average +/- SEM
+        shadedErrorBar( ...
+            1:nSamples, ...
+            nanmean(kernel_model(:,:,confidenceLevel),1), ...
+            nanstd(kernel_model(:,:,confidenceLevel),0,1) ./ sqrt(nSubjects), ...
+            'lineProps', {'-','color',colors(confidenceLevel,:)});
+
+    end
+
 end
+
+yline(0,'--','color',gray);
+
+xticks(1:nSamples)
+xlim([0 nSamples+1])
+ylabel('Excess contrast')
+xlabel('Sample number')
+set(gca,'fontsize',15)

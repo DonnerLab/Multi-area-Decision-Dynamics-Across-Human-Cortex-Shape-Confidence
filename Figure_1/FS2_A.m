@@ -1,81 +1,91 @@
 %% =======================================================================
-% Figure S2A: Model comparison using group BMC
+% Figure S2A
+%
 %% =======================================================================
 
-clearvars
+clear all
 close all
 
-%% Paths
+
+%% =======================================================================
+% PATHS
+%% =======================================================================
 
 % Folder where this script is located
 scriptFolder = fileparts(mfilename('fullpath'));
+if isempty(scriptFolder), scriptFolder = pwd; end
 
-% Go up two folders
-repoRoot = (fileparts(scriptFolder));
+% Go up one folder (repository root)
+projectFolder = fileparts(scriptFolder);
 
-% Standard project paths
-dataFolder      = fullfile(repoRoot, 'data');
-modelFolder     = fullfile(dataFolder, 'model', 'results');
-functionsFolder = fullfile(repoRoot, 'functions');
+% Path to model results
+modelFolder = fullfile(projectFolder, 'data', 'model', 'results');
 
-% Add functions (including VBA toolbox if stored here)
-addpath(genpath(functionsFolder));
+% Path to functions (including the VBA toolbox)
+addpath(genpath(fullfile(projectFolder, 'functions')));
 
-%% Settings
+
+%% =======================================================================
+% SETTINGS
+%% =======================================================================
 
 nModels   = 19;
 nSubjects = 20;
 
-LL_all = nan(nSubjects, nModels);
+logLikelihood = nan(nSubjects,nModels);
 
-%% Compute log-likelihoods
+
+%% =======================================================================
+% LOG-LIKELIHOOD OF EACH MODEL AND SUBJECT
+%% =======================================================================
 
 for model = 1:nModels
-
-    for s = 1:nSubjects
+    for subject = 1:nSubjects
 
         load(fullfile(modelFolder, ...
-            sprintf('All_data_model_%d_sbj_%d.mat', model, s)));
+            ['All_data_model_' num2str(model) '_sbj_' num2str(subject) '.mat']));
 
-        % Create a trial × 4 matrix with each column corresponding to:
-        % 1 = Right / High confidence
-        % 2 = Right / Low confidence
-        % 3 = Left  / High confidence
-        % 4 = Left  / Low confidence
+        % Observed report of each trial (trials x 4, one 1 per row)
+        % 1 = right/high, 2 = right/low, 3 = left/high, 4 = left/low
+        observedReport = zeros(size(All_Conf));
+        observedReport(Real_data(:,1)==1 & Real_data(:,2)==2,1) = 1;
+        observedReport(Real_data(:,1)==1 & Real_data(:,2)==1,2) = 1;
+        observedReport(Real_data(:,1)==0 & Real_data(:,2)==2,3) = 1;
+        observedReport(Real_data(:,1)==0 & Real_data(:,2)==1,4) = 1;
 
-        Confidence_choices = zeros(size(All_Conf));
+        % Model probabilities of the 4 reports (no zero probabilities)
+        modelProbability = double(All_Conf) * 0.99 + 0.005;
 
-        Confidence_choices(Real_data(:,1)==1 & Real_data(:,2)==2,1) = 1;
-        Confidence_choices(Real_data(:,1)==1 & Real_data(:,2)==1,2) = 1;
-        Confidence_choices(Real_data(:,1)==0 & Real_data(:,2)==2,3) = 1;
-        Confidence_choices(Real_data(:,1)==0 & Real_data(:,2)==1,4) = 1;
+        % Remove trials without a report
+        noReport = sum(observedReport,2) == 0;
+        observedReport(noReport,:)   = [];
+        modelProbability(noReport,:) = [];
 
-        % Probabilities from model fits
-        Choices_P = double(All_Conf) * 0.99 + 0.005;
+        % Average log-likelihood per trial
+        logLikelihood(subject,model) = ...
+            nanmean(log(nansum(observedReport .* modelProbability, 2)));
 
-        % Remove invalid trials
-        invalidTrials = sum(Confidence_choices,2) == 0;
-
-        Confidence_choices(invalidTrials,:) = [];
-        Choices_P(invalidTrials,:) = [];
-
-        % Average log-likelihood
-        LL_all(s,model) = nanmean( ...
-            log(nansum(Confidence_choices .* Choices_P, 2)));
     end
-
 end
 
-%% Bayesian Model Comparison
 
-opt = [];
-opt.DisplayWin = 0;
+%% =======================================================================
+% RANDOM-EFFECTS BAYESIAN MODEL COMPARISON
+%% =======================================================================
 
-[~, out] = VBA_groupBMC(LL_all', opt);
+options = [];
+options.DisplayWin = 0;
+options.verbose    = 0;
 
-%% Plot
+[~, out] = VBA_groupBMC(logLikelihood', options);
+
+
+%% =======================================================================
+% FIGURE (Figure S2A) - EXCEEDANCE PROBABILITY
+%% =======================================================================
 
 figure
+hold on
 
 bar(out.ep, ...
     'FaceColor', 0.75 * ones(1,3), ...
@@ -83,28 +93,12 @@ bar(out.ep, ...
     'EdgeColor', 0.5 * ones(1,3), ...
     'LineWidth', 1.5);
 
-hold on
-
 ylim([0 1.1])
-
 set(gca, ...
     'XTick', 1:nModels, ...
-    'XTickLabel', 1:nModels, ...
-    'XTickLabelRotation', 30, ...
-    'FontSize', 6, ...
+    'YTick', [0 0.25 0.5 0.75 1], ...
+    'FontSize', 15, ...
     'Box', 'off', ...
-    'TickDir', 'out', ...
-    'LineWidth', 1, ...
-    'YTick', [0 1]);
-
-ylabel('Expected probability')
+    'TickDir', 'out');
+ylabel('Exceedance probability')
 xlabel('Model')
-
-% Display model comparison metrics
-disp('Protected exceedance probabilities:')
-disp(out.pxp)
-
-pxp = (1 - out.bor) * out.ep + out.bor / length(out.ep);
-
-disp('Adjusted exceedance probabilities:')
-disp(pxp)

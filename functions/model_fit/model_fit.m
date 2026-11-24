@@ -7,11 +7,12 @@ function model_fit(subject_n)
 scriptFolder = fileparts(mfilename('fullpath'));
 repoRoot = fileparts(fileparts(scriptFolder));
 
-dataFolder    = fullfile(repoRoot,'data');
-modelFolder   = fullfile(dataFolder,'model');
+dataFolder     = fullfile(repoRoot,'data');
+behaviorFolder = fullfile(dataFolder,'behavior');
+modelFolder    = fullfile(dataFolder,'model');
 resultsFolder = fullfile(modelFolder,'results');
 
-addpath(genpath(fullfile(repoRoot,'functions','bads')));
+addpath(genpath(fullfile(repoRoot,'functions','bads-master')));
 
 
 
@@ -25,7 +26,7 @@ for s=subject_n
     tic;
 
     % load data
-    load(fullfile(modelFolder,'data.mat'))
+    load(fullfile(behaviorFolder,'data.mat'))
 
     this_subject=[];
     % aggregate drug conditions
@@ -257,14 +258,13 @@ xbest=mean(All_param,1);
 
 % save parameters and fits
 
-Parameters(s,:,Type)=[xbest];
 
 
 
 
 
 
-modelName = '_model_9_';
+modelName = '_model_9';
 
 Parameters = xbest;
 

@@ -1,41 +1,46 @@
 %% =======================================================================
-% Figure 2A Choice Decoder Performance Across Cortical Areas
+% Figure 2A
 %
-%=========================================
+% Whole-cortex maps of choice and confidence decoding accuracy at the end
+% of stimulus viewing (left hemisphere, 180 areas of the Glasser atlas)
+%
+% Decoder accuracy of each area: data/brain_map_decoder/
+%   all_areas_choice.mat, all_areas_confidence.mat
+% (all_areas_confidence.mat: functions/decoder/decode_confidence_bilateral.m,
+% then functions/decoder/make_brain_map_matrix.m)
+%% =======================================================================
 
 clear all
 close all
 
+
 %% =======================================================================
-% Paths
+% PATHS
 %% =======================================================================
 
 % Folder where this script is located
 scriptFolder = fileparts(mfilename('fullpath'));
+if isempty(scriptFolder), scriptFolder = pwd; end
 
-% Go up two folders 
-projectFolder = fileparts(fileparts(scriptFolder));
+% Go up one folder (repository root)
+projectFolder = fileparts(scriptFolder);
 
-% Data folders
-decoderFolder = fullfile(projectFolder, 'data', 'brain_map_decoder');
+% Data and functions (atlas, surfaces, gifti toolbox)
+decoderFolder   = fullfile(projectFolder, 'data', 'brain_map_decoder');
 functionsFolder = fullfile(projectFolder, 'functions');
-giftiFolder = fullfile(functionsFolder, 'gifti-1.6');
 
-% Add required paths
-addpath(decoderFolder)
 addpath(functionsFolder)
-addpath(giftiFolder)
+addpath(fullfile(functionsFolder, 'gifti-1.6'))
+
 
 %% =======================================================================
-% Load decoder performance
+% SETTINGS
 %% =======================================================================
 
-decoderData = importdata(fullfile(decoderFolder, 'all_areas_choice.mat'));
+nSubjects = 20;
+nAreas    = 180;
 
-%% =======================================================================
-% ROI labels
-%% =======================================================================
-
+% Area names, in the order of the decoder output
 allROIs = { ...
     'V1','V2','V3','V4','V6','V3A','V7','IPS1','V3B','V6A','V8','FFC','PIT','VMV1','VMV3','VMV2','VVC',...
     'MST','LO1','LO2','MT','PH','V4t','FST','V3CD','LO3','4','3b','1','2','3a','5m','5mv',...
@@ -50,135 +55,87 @@ allROIs = { ...
     'OFC','47s','p10p','44','45','47l','a47r','IFJa','IFJp','IFSp','IFSa','p47r','SFL','8Av','8Ad','8BL',...
     '9p','8C','p9_46v','46','a9_46v','9_46d','9a','i6_8','s6_8'};
 
-nSubjects = 20;
-nAreas = 180;
-
-%% =======================================================================
-% Average decoder performance
-%% =======================================================================
-
-% Original code:
-% mean across repetitions, then subtract chance level (0.5)
-
-decoderPerformance = nanmean(decoderData, 2) - 0.5;
-decoderPerformance = reshape(decoderPerformance, nSubjects, nAreas);
-
-% Mean performance across subjects for each area
-meanPerformance = nan(1, nAreas);
-
-for area = 1:nAreas
-    meanPerformance(area) = nanmean(decoderPerformance(:, area));
-end
-
-%% =======================================================================
-% Load Glasser atlas
-%% =======================================================================
-
+% Glasser atlas (vertex labels) and inflated left-hemisphere surface
 load(fullfile(functionsFolder, 'Glasser_surface.mat'))
+atlasTable  = readtable(fullfile(functionsFolder, 'Glasser_labels.csv'));
+atlasLabels = atlasTable.Label;
 
-areaTable = readtable(fullfile(functionsFolder, 'Glasser_labels.csv'));
-atlasLabels = areaTable.Label;
+surfaceMesh = gifti(fullfile(functionsFolder, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii'));
+
 
 %% =======================================================================
-% Assign decoder values to cortical vertices
+% ONE MAP FOR EACH DECODER (choice, confidence)
 %% =======================================================================
 
-vertexValues = nan(64984, 1);
+decoderNames = {'choice', 'confidence'};
 
-for area = 1:nAreas
-    
-    roiName = ['L_', char(allROIs(area))];
-    
-    labelIndex = find(strcmp(atlasLabels, roiName));
-    
-    if ~isempty(labelIndex)
-        
-        atlasIndex = atlas.indexmax;
-        vertexIndex = find(atlasIndex == labelIndex);
-        
-        vertexValues(vertexIndex) = meanPerformance(area);
-        
+for decoder = 1:2
+
+    %% ===================================================================
+    % DECODER ACCURACY OF EACH AREA (group average, minus chance)
+    %% ===================================================================
+
+    decoderData = importdata(fullfile(decoderFolder, ['all_areas_' decoderNames{decoder} '.mat']));
+
+    % Mean across columns (sessions) minus chance level, subjects x areas
+    decoderAccuracy = reshape(nanmean(decoderData,2) - 0.5, nSubjects, nAreas);
+
+    meanAccuracy = nanmean(decoderAccuracy,1);
+
+
+    %% ===================================================================
+    % ASSIGN THE ACCURACY OF EACH AREA TO ITS VERTICES
+    %% ===================================================================
+
+    vertexValues = nan(64984,1);
+
+    for area = 1:nAreas
+
+        labelIndex = find(strcmp(atlasLabels, ['L_' allROIs{area}]));
+
+        if ~isempty(labelIndex)
+            vertexValues(atlas.indexmax == labelIndex) = meanAccuracy(area);
+        end
+
     end
+
+    % Left-hemisphere vertices; vertices outside the atlas in gray
+    leftHemisphereValues = vertexValues(32493:end);
+    leftHemisphereValues(isnan(leftHemisphereValues)) = max(abs(leftHemisphereValues)) + 0.5;
+
+
+    %% ===================================================================
+    % FIGURE (Figure 2A)
+    %% ===================================================================
+
+    figure(decoder)
+    colormap([brewermap(180, '*RdBu'); 0.5 0.5 0.5])
+
+    trisurf( ...
+        surfaceMesh.faces, ...
+        surfaceMesh.vertices(:,1), ...
+        surfaceMesh.vertices(:,2), ...
+        surfaceMesh.vertices(:,3), ...
+        leftHemisphereValues, ...
+        'edgealpha', 0)
+
+    set(gca, 'clim', [-0.03 0.03])
+    title(['Decoding of ' decoderNames{decoder}])
+
+    axis vis3d
+    axis off
+    view([90 0])
+    xlim([-100 50])
+    ylim([-105 70])
+    zlim([-70 80])
+
+    set(gcf, 'color', 'w')
+    material([0.6 0.4 0 5 1])
+    shading interp
+    lighting gouraud
+    camlight('headlight')
+    camlight('left')
+    camlight('right')
+
+
 end
-
-%% =======================================================================
-% Colormap
-%% =======================================================================
-
-colorMap = [brewermap(180, '*RdBu'); 0.5 0.5 0.5];
-
-%% =======================================================================
-% Left hemisphere only
-%% =======================================================================
-
-% Original code uses only left hemisphere vertices
-leftHemisphereValues = vertexValues(32493:end);
-
-maxValue = max(abs(leftHemisphereValues));
-
-% Replace NaNs with gray color index
-nanIndex = isnan(leftHemisphereValues);
-leftHemisphereValues(nanIndex) = maxValue + 0.5;
-
-%% =======================================================================
-% Load cortical surface
-%% =======================================================================
-
-hemisphere = 'L';
-surfaceType = 'inflated';
-
-surfaceFile = fullfile( ...
-    functionsFolder, ...
-    ['S1200.' hemisphere '.' surfaceType '_MSMAll.32k_fs_LR.surf.gii'] ...
-);
-
-surfaceMesh = gifti(surfaceFile);
-
-%% =======================================================================
-% Plot brain surface
-%% =======================================================================
-
-figure
-colormap(colorMap)
-
-clim = [-0.03 0.03];
-
-trisurf( ...
-    surfaceMesh.faces, ...
-    surfaceMesh.vertices(:,1), ...
-    surfaceMesh.vertices(:,2), ...
-    surfaceMesh.vertices(:,3), ...
-    leftHemisphereValues, ...
-    'edgealpha', 0 ...
-)
-
-set(gca, 'clim', clim)
-set(gca, 'fontsize', 20)
-
-axis vis3d
-axis square
-axis off
-
-material dull
-lighting flat
-set(gcf, 'color', 'w')
-
-view([90 0])
-
-xlim([-100 50])
-ylim([-105 70])
-zlim([-70 80])
-
-%% =======================================================================
-% Final rendering settings
-%% =======================================================================
-
-material([0.6 0.4 0 5 1])
-
-shading interp
-lighting gouraud
-
-% Symmetric lighting to reduce shadows
-camlight('headlight')
-camlight('left')
-camlight('right')

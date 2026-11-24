@@ -1,23 +1,46 @@
-function Decoder_Performance = decode_choice_bilateral(subject, sessions, Rec)
+function decode_choice_bilateral(subject, sessions, Rec)
+%% =======================================================================
+% Bilateral choice decoder of each of the 180 areas (Figures 4, 5)
 
-% === Setup ===============================================================
-rng(42);
+% Inputs:
+%   subject  - subject number (e.g. 1 for S01)
+%   sessions - session number(s)
+%   Rec      - recording number(s) of the session
+%
+% Output (one file per area):
+%   data/decoder_output/ROI_bilateral/
+%     <subject>_<sessions>_<area>_CHOICEdecoder_alltrials_all_b.mat
+%
+% Requires the source-reconstructed single-trial MEG data (ERF) and the
+% trial information files (not part of the repository, see PATHS)
+%% =======================================================================
 
-Extra_sessions = [1,2,4,5,7,0,11,12,15,17,18,10,0,0,0,0,0,0,0,0,0];
-s_n = subject;
 
-if s_n < 10
-    subject = ['S0', num2str(s_n)];
-else
-    subject = ['S', num2str(s_n)];
-end
+%% =======================================================================
+% PATHS
+%% =======================================================================
 
-if sessions == 1 && any(Extra_sessions == s_n)
+erfFolder    = '~/Desktop/2AFC/ERF';
+trialsFolder = '~/Desktop/2AFC/trials';
+
+functionFolder = fileparts(mfilename('fullpath'));
+outputFolder   = fullfile(fileparts(fileparts(functionFolder)), 'data', 'decoder_output', 'ROI_bilateral');
+
+
+%% =======================================================================
+
+
+
+% Subject ID; participants with an additional session have session 1
+% stored as session 11
+subjectNumber = subject;
+subject = sprintf('S%02d', subjectNumber);
+
+if sessions == 1 && any([1,2,4,5,7,11,12,15,17,18,10] == subjectNumber)
     sessions = 11;
 end
 
-% Areas to decode
-areas_to_decode = {'V1','V2','V3','V4','V6','V3A','V7','IPS1','V3B','V6A','V8','FFC','PIT','VMV1','VMV3','VMV2','VVC',...
+areas = {'V1','V2','V3','V4','V6','V3A','V7','IPS1','V3B','V6A','V8','FFC','PIT','VMV1','VMV3','VMV2','VVC',...
     'MST','LO1','LO2','MT','PH','V4t','FST','V3CD','LO3','4','3b','1','2','3a','5m','5mv',...
     '23c','5L','24dd','24dv','SCEF','6ma','6mp','FEF','PEF','55b','6d','6v','6r','6a',...
     '43','OP4','OP1','OP2-3','FOP1','A1','52','RI','PFcm','PBelt','MBelt','LBelt','TA2','STGa',...
@@ -30,191 +53,163 @@ areas_to_decode = {'V1','V2','V3','V4','V6','V3A','V7','IPS1','V3B','V6A','V8','
     'OFC','47s','p10p','44','45','47l','a47r','IFJa','IFJp','IFSp','IFSa','p47r','SFL','8Av','8Ad','8BL',...
     '9p','8C','p9-46v','46','a9-46v','9-46d','9a','i6-8','s6-8'};
 
-% Build session string for saving
-sess_str = strjoin(arrayfun(@num2str, sessions, 'UniformOutput', false), '_');
+hemispheres = {'r','l'};
+nTime       = 201;
 
-% Add required paths
-addpath('~/Desktop/2AFC/Analyses/liblinear-2.45/matlab');
-addpath('~/aletoso/Desktop/2AFC/trials/');
+% Sessions in the output file name, e.g. '11_2_3_4_5_6'
+sessionString = strjoin(arrayfun(@num2str, sessions, 'UniformOutput', false), '_');
 
-% === Loop over areas =====================================================
-for a_n = 1:numel(areas_to_decode)
-    area_name = areas_to_decode{a_n};
-    fprintf('\n>>> Decoding CHOICE for %s - %s <<<\n', subject, area_name);
 
-    All_ERF_R = [];
-    All_Behavior = [];
+%% =======================================================================
+% LOOP OVER AREAS
+%% =======================================================================
+
+for area = 1:numel(areas)
+
+    %% ===================================================================
+    % LOAD THE MEG DATA OF THE AREA (both hemispheres) AND BEHAVIOR
+    %
+    % meg: trials x vertices x time, baseline-corrected
+    %% ===================================================================
+
+    meg          = [];
+    behavior     = [];
     session_nums = [];
 
-    sides = {'r','l'};
-   
+    for session = sessions(:)'
+        for recordingNumber = Rec(:)'
 
-    % === Load MEG data + Behavior =============================================
-    for si = 1:numel(sessions)
-        for ri = 1:numel(Rec)
-            All_ERF = [];
-            for side_i = 1:2
-                path = fullfile('~/Desktop/2AFC/ERF', ...
-                    [subject, 'SES', num2str(sessions(si)), '_', num2str(Rec(ri)), '_', area_name, '_ERF_', sides{side_i}, '.mat']);
-                if isfile(path)
-                    tmp = load(path);
-                    erf = tmp.comb_dict{1,1}.erfdata;
-                    if ~isempty(erf)
-                        All_ERF = cat(2, All_ERF, erf);
-                    end
+            recordingMEG = [];
+
+            for hemisphere = 1:2
+                erfFile = fullfile(erfFolder, [subject 'SES' num2str(session) '_' num2str(recordingNumber) ...
+                    '_' areas{area} '_ERF_' hemispheres{hemisphere} '.mat']);
+                if isfile(erfFile)
+                    ERF = load(erfFile);
+                    recordingMEG = cat(2, recordingMEG, ERF.comb_dict{1,1}.erfdata);
                 end
             end
 
-            behav_path = fullfile('~/Desktop/2AFC/trials', ...
-                [subject, '_', num2str(sessions(si)), '_', num2str(Rec(ri)), '_trials.mat']);
-            if isfile(behav_path)
-                load(behav_path);
-                All_ERF = permute(All_ERF, [3,1,2]);
-                All_ERF = permute(All_ERF, [2,3,1]);
-                % baseine subtracting pre-stimulus 500 ms per each trial
-                baseline_mean = mean(All_ERF(:,:,1:201), 3);
-                All_ERF_R = cat(1, All_ERF_R, All_ERF - baseline_mean );
-                All_Behavior = [All_Behavior; data.trialinfo];
-                session_nums = [session_nums; repmat(sessions(si), size(data.trialinfo,1), 1)];
+            trialsFile = fullfile(trialsFolder, [subject '_' num2str(session) '_' num2str(recordingNumber) '_trials.mat']);
+
+            if isfile(trialsFile)
+                load(trialsFile);
+                meg          = cat(1, meg, recordingMEG - mean(recordingMEG(:,:,1:201),3));
+                behavior     = [behavior; data.trialinfo];
+                session_nums = [session_nums; repmat(session, size(data.trialinfo,1), 1)];
             end
+
         end
     end
 
-    % === Downsample time dimension =======================================
-    All_ERF_R_ds = [];
-    for vi = 1:size(All_ERF_R,2)
-        tmp = permute(All_ERF_R(:,vi,:), [3,1,2]);
-        tmp_ds = downsample(tmp, 4);
-        All_ERF_R_ds(:,:,vi) = tmp_ds;
+    % Downsample in time (factor 4)
+    megDownsampled = [];
+    for vertex = 1:size(meg,2)
+        megDownsampled(:,vertex,:) = downsample(squeeze(meg(:,vertex,:))', 4)';
     end
-    All_ERF_R = permute(All_ERF_R_ds, [2,3,1]);
-    clear All_ERF_R_ds tmp tmp_ds
+    meg = megDownsampled;
 
-    % === Prepare behavioral labels =======================================
-    % Fix confidence inversion
-    id_1_1 = (All_Behavior(:,2)==1 & All_Behavior(:,3)==1);
-    id_1_2 = (All_Behavior(:,2)==1 & All_Behavior(:,3)==2);
-    All_Behavior(id_1_1,3)=2;
-    All_Behavior(id_1_2,3)=1;
 
-    % Choice labels (to decode)
-    Y_all = double(All_Behavior(:,2)); % choice column
+    %% ===================================================================
+    % LABELS
+    %
+    % trialinfo columns: 2 = choice (1 = right), 3 = confidence (1/2),
+    % 4 = stimulus, 5 = RT, 16:25 = left contrasts, 26:35 = right
+    %% ===================================================================
+
+    % Confidence codes are inverted for right choices in the trial files
+    rightLow  = behavior(:,2) == 1 & behavior(:,3) == 1;
+    rightHigh = behavior(:,2) == 1 & behavior(:,3) == 2;
+    behavior(rightLow,3)  = 2;
+    behavior(rightHigh,3) = 1;
+
+    % Choice: +1 = right, -1 = left
+    Y_all = double(behavior(:,2));
     Y_all(Y_all == 0) = -1;
 
-    % Evidence strength
-    left_samples  = All_Behavior(:,16:25);
-    right_samples = All_Behavior(:,26:35);
-    evidence_strength = abs(mean(right_samples,2) - mean(left_samples,2));
-
-    % Store other variables for saving
-    confidence_all = All_Behavior(:,3);
-    rts_all        = All_Behavior(:,5);
-    stimulus_all   = All_Behavior(:,4);
-
-    % === Cross-validation setup ==========================================
-    nTrials = size(All_ERF_R,1);
-    Time   = 1:201;
-    nTime   = size(1:201,2);
-    
-    cv = cvpartition(nTrials, 'KFold', 10);
-
-    log_odds_all = nan(nTrials, nTime);
-    accuracy_all = nan(cv.NumTestSets, nTime);
-
-    % === Decode over time ================================================
-    for t = 1:nTime
-        X = squeeze(All_ERF_R(:,:,Time(t)));
-        X = normalize(X);
-
-        % PCA and take N PCA that eaxplain 90% of  the variance
-        [~, score, ~, ~, explained] = pca(X);
-        cumexp = cumsum(explained);
-       
-        id_pca = find(cumexp > 90, 1);
-        id_pca_all(t,:)=[id_pca size(score,2)];
-        explained_all{t,:}=explained;
-        if isempty(id_pca), id_pca = 2; end
-        X_all = score(:,1:max(2,id_pca));
-
-        for fold = 1:cv.NumTestSets
-            train_idx = training(cv, fold);
-            test_idx  = test(cv, fold);
-
-            Y_train = Y_all(train_idx);
-            X_train = X_all(train_idx,:);
-
-            % Balance training set (upsample)
-           idL = find(Y_train == -1);
-idR = find(Y_train == 1);
-
-nL = numel(idL);
-nR = numel(idR);
-
-if nL < 1 || nR < 1
-    continue;
-end
-
-if nL > nR
-    % Right class is minority
-    n_extra = nL - nR;
-    id_extra = idR(randi(nR,n_extra,1));
-
-    X_train_bal = [X_train(idL,:);
-                   X_train(idR,:);
-                   X_train(id_extra,:)];
-
-    Y_train_bal = [-ones(nL,1);
-                    ones(nR,1);
-                    ones(n_extra,1)];
-
-elseif nR > nL
-    % Left class is minority
-    n_extra = nR - nL;
-    id_extra = idL(randi(nL,n_extra,1));
-
-    X_train_bal = [X_train(idL,:);
-                   X_train(idR,:);
-                   X_train(id_extra,:)];
-
-    Y_train_bal = [-ones(nL,1);
-                    ones(nR,1);
-                   -ones(n_extra,1)];
-
-else
-    X_train_bal = X_train;
-    Y_train_bal = Y_train;
-end
+    evidence_strength = abs(mean(behavior(:,26:35),2) - mean(behavior(:,16:25),2));
+    confidence_all    = behavior(:,3);
+    rts_all           = behavior(:,5);
+    stimulus_all      = behavior(:,4);
 
 
+    %% ===================================================================
+    % DECODING, TIME POINT BY TIME POINT
+    %% ===================================================================
 
+    nTrials = size(meg,1);
+    folds   = cvpartition(nTrials, 'KFold', 10);
 
-            [X_train_z, mu, sigma] = zscore(X_train_bal);
-            Mdl = fitclinear(X_train_z, Y_train_bal, 'Learner', 'logistic');
+    log_odds_all  = nan(nTrials,nTime);
+    accuracy_all  = nan(folds.NumTestSets,nTime);
+    id_pca_all    = nan(nTime,2);
+    explained_all = cell(nTime,1);
 
-            % Test
-            X_test = X_all(test_idx,:);
-            X_test_z = (X_test - mu) ./ sigma;
-            Y_test = Y_all(test_idx);
+    for time = 1:nTime
 
-            Y_pred = predict(Mdl, X_test_z);
-            logodds = X_test_z * Mdl.Beta + Mdl.Bias;
+        % PCA on the z-scored vertices (all trials)
+        [~, scores, ~, ~, explained] = pca(normalize(meg(:,:,time)));
 
-            log_odds_all(test_idx, t) = logodds;
-            accuracy_all(fold, t) = mean(Y_pred == Y_test);
+        nPCs = find(cumsum(explained) > 90, 1);
+        id_pca_all(time,:)  = [nPCs size(scores,2)];
+        explained_all{time} = explained;
+        if isempty(nPCs), nPCs = 2; end
+
+        PCs = scores(:,1:max(2,nPCs));
+
+        for fold = 1:folds.NumTestSets
+
+            trainTrials = training(folds,fold);
+            testTrials  = test(folds,fold);
+
+            X_train = PCs(trainTrials,:);
+            Y_train = Y_all(trainTrials);
+
+            % Upsample the smaller class
+            negative = find(Y_train == -1);
+            positive = find(Y_train ==  1);
+
+            if isempty(negative) || isempty(positive)
+                continue
+            end
+
+            if numel(negative) > numel(positive)
+                extra   = positive(randi(numel(positive), numel(negative) - numel(positive), 1));
+                Y_extra = ones(numel(extra),1);
+            else
+                extra   = negative(randi(numel(negative), numel(positive) - numel(negative), 1));
+                Y_extra = -ones(numel(extra),1);
+            end
+
+            X_balanced = [X_train(negative,:); X_train(positive,:); X_train(extra,:)];
+            Y_balanced = [-ones(numel(negative),1); ones(numel(positive),1); Y_extra];
+
+            % z-score with the training mean and SD, logistic regression
+            [X_balanced, mu, sigma] = zscore(X_balanced);
+            model = fitclinear(X_balanced, Y_balanced, 'Learner', 'logistic');
+
+            X_test = (PCs(testTrials,:) - mu) ./ sigma;
+
+            log_odds_all(testTrials,time) = X_test * model.Beta + model.Bias;
+            accuracy_all(fold,time)       = mean(predict(model, X_test) == Y_all(testTrials));
+
         end
+
     end
 
-    % === Save outputs ====================================================
-    savepath = '/home/aletoso/Desktop/2AFC/Figures_confidence/wnag/NO_B/all_areas/';
-    if ~exist(savepath, 'dir')
-        mkdir(savepath);
+
+    %% ===================================================================
+    % SAVE
+    %% ===================================================================
+
+    if ~exist(outputFolder,'dir')
+        mkdir(outputFolder);
     end
 
-    filename = fullfile(savepath, [subject, '_', sess_str, '_', area_name, '_CHOICEdecoder_alltrials_all_b.mat']);
-    save(filename, 'log_odds_all', 'Y_all', 'stimulus_all', 'confidence_all', ...
-        'rts_all', 'evidence_strength', 'accuracy_all', 'session_nums','id_pca_all','explained_all','-v7.3');
+    save(fullfile(outputFolder, [subject '_' sessionString '_' areas{area} '_CHOICEdecoder_alltrials_all_b.mat']), ...
+        'log_odds_all','Y_all','stimulus_all','confidence_all','rts_all', ...
+        'evidence_strength','accuracy_all','session_nums','id_pca_all','explained_all','-v7.3');
 
 end
 
-Decoder_Performance = [];
 end

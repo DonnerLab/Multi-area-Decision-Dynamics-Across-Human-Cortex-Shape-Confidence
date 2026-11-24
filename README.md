@@ -1,164 +1,117 @@
 # Multi-area Decision Dynamics Across Human Cortex Shape Confidence
 
-This repository contains the MATLAB code used to reproduce the analyses and figures reported in:
+MATLAB code to reproduce the figures of:
 
 **Toso A., Arazi A., de la Rocha J., Tsetsos K., & Donner T.H.**
 **Multi-area Decision Dynamics Across Human Cortex Shape Confidence**
-bioRxiv (2025)
 
-The repository contains code for:
-
-* Behavioral analyses.
-* Computational model fitting and model comparison.
-* Model simulations of choice and confidence.
-* Neural decoding analyses from source-reconstructed MEG data.
-* Brain-map visualizations.
-* Reproduction of main and supplementary figures reported in the manuscript.
+Every script reproduces the panels in its name (`F` = main figure, `FS` = supplementary figure), e.g. `F1B_FS3A_B.m` = Figure 1B and Figure S3A-B. Scripts are run from anywhere: paths are relative to the repository root (the folder above the script).
 
 ---
 
-# Requirements
+## Requirements
 
-The analyses were developed and tested using:
-* MATLAB R2020b
-The repository relies on several external toolboxes listed below.
+* MATLAB R2020b, Statistics and Machine Learning Toolbox
+* Included in `functions/`: VBA toolbox (Figure S2A), BADS (model fitting and recovery), gifti toolbox, brewermap, shadedErrorBar, permutationTest, fdr_bh
 
----
+## Data
 
-# Repository Structure
-
-```text
-├── Figure_1/
-├── Figure_2/
-├── Figure_3/
-├── Figure_4/
-├── functions/
-└── data/
-```
-
-## Figure folders
-
-Each figure directory contains the MATLAB scripts used to reproduce the corresponding figures reported in the manuscript.
-
----
-
-# Data Availability
-
-The behavioral and processed MEG datasets required to reproduce the analyses can be downloaded from:
-
-https://figshare.com/s/96510af31ee742b4498e
-
-After downloading, place the data into the repository `data/` directory while preserving the original folder structure.
-
-The full raw MEG dataset will be made available through the University of Hamburg Center for Sustainable Data Management.
-
-The repository includes all processed data required to reproduce the published figures. Recomputing decoder outputs directly from source-level MEG activity requires access to the raw/source-reconstructed MEG data.
-
----
-
-# Data Organization
+The behavioral data, model fits and decoder outputs can be downloaded from (uLink will be available upon publication) and go into `data/`:
 
 ```text
 data/
-├── behavior/
+├── behavior/data.mat                         All_Data: subjects x drug conditions
 ├── model/
-├── best_model_fit/
-├── decoder_output/
-├── brain_map_decoder/
-└── generalization_matrix/
+│   ├── results/                              All_data_model_<m>_sbj_<s>.mat, Parameters_model_<m>_sbj_<s>.mat
+│   └── recovery/                             rec_g09_d<dataset>_f<model>.mat (Model_recovery/)
+├── brain_map_decoder/                        to reproduce Figure 2A brainmaps
+├── generalization_matrix/                    temporal cross-decoding matrices of PMd and M1
+└── decoder_output/
+    ├── ROI_bilateral/                        bilateral decoders of the selected ROIs (Figures 4, 5)
+    ├── PMd_M1_hemi/                          single-hemisphere decoders of 6a, 6d, 4 (Figure 2)
+    ├── PMd_M1_hemi_behavior/                 single-hemisphere decoders of 6A6D, 4, with confidence and RT (Figure 3)
+    ├── all_areas/                            choice and confidence decoders on all areas (Figure S4E-G)
+    ├── all_VX/                               decoder weights of the PMd/M1 vertices (Figure 2E)
+    ├── bilateral/stimulus/                   PMd/M1 decoder output, 100 Hz (Figure S7F)
+    └── v1/                                   contrast decoding from V1 (Figure S7B-C)
 ```
-
-### behavior/
-Contains behavioral responses and task-related variables used throughout the analyses.
-
-### model/
-
-Contains outputs from fitting the candidate computational models to behavioral data, including trial-wise predictions and model likelihoods.
-
-### best_model_fit/
-
-Contains simulations and outputs associated with the best-fitting model architecture.
-
-### decoder_output/
-
-Contains processed neural decoder outputs used throughout the manuscript.
-
-### brain_map_decoder/
-
-Contains ROI-based and whole-cortex decoder outputs used for brain-map analyses.
-
-### generalization_matrix/
-
-Contains temporal and cross-condition generalization analyses used in Figures 2–3 and related supplementary figures.
 
 ---
 
-# Computational Modeling
+## Scripts
 
-The repository evaluates multiple computational models of perceptual decision-making and confidence.
+### Figure_1 (behavior and model)
 
-The model fitting framework is located in:
+| Script | Panels |
+|---|---|
+| `F1B_FS3A_B.m` | 1B confidence vs evidence; S3A confidence-RT correlation; S3B RT vs evidence |
+| `F1C_FS1E_F.m` | 1C psychometric function; S1E psychophysical kernel; S1F primacy index |
+| `F1D_E.m` | 1D confidence vs evidence for correct and error trials; 1E their correlations |
+| `F1F_G.m` | 1F confidence kernels; 1G kernel asymmetry |
+| `FS1C_D.m` | S1C-D correlation of left and right contrast fluctuations |
+| `FS2_A.m` | S2A Bayesian model comparison (exceedance probability) |
+| `FS2_B.m` | S2B model recovery |
+| `FS2_C.m` | S2C mean squared error of the confidence kernels |
+| `FS3C_D.m` | S3C RT vs evidence for correct and error trials; S3D their correlations |
+| `FS3E_F.m` | S3E-F kernels split by RT |
 
-```text
-functions/model_fit/
-```
+### Figure_2 (neural DVs in PMd)
 
-### Model fitting
+| Script | Panels |
+|---|---|
+| `F2A.m` | 2A whole-cortex map of choice decoding |
+| `F2B_FS4A.m` | 2B (PMd), S4A (M1) bilateral choice decoding |
+| `F2C_FS4B.m` | 2C (PMd), S4B (M1) temporal cross-decoding matrix |
+| `F2D_FS4C.m` | 2D (PMd), S4C (M1) variance of the decoder output |
+| `F2E.m` | 2E decoder weights per vertex |
+| `F2F.m` | 2F example trials |
+| `F2G.m` | 2G winning and losing neural DVs |
+| `F2H_FS6D.m` | 2H across-trial correlation of neural (PMd) and model DVs; S6D same for M1 |
+| `F2I_FS6F.m` | 2I (PMd), S6F (M1) within-trial cross-correlograms |
+| `FS4E_G.m` | S4E-G choice and confidence decoders on all areas |
+| `FS6A_B.m` | S6A-B correlation of left and right sample means |
+| `FS6C_FS7A_D_E_G_H_I.m` | S6C, S7A, D, E, G, H, I model parameters |
+| `FS6E.m` | S6E within-trial cross-correlograms of model DVs |
+| `FS7B_C.m` | S7B-C contrast decoding from V1 |
+| `FS7F.m` | S7F leak vs neural DV slope |
 
-The central fitting routine is:
+### Figure_3 (neural DVs, confidence and RT)
 
-```text
-model_fit.m
-```
+| Script | Panels |
+|---|---|
+| `F3B_C_FS9B_C_F_FS10.m` | 3B-C, S9B-C, S9F, S10 regressions of confidence and RT on winning and losing neural DVs (PMd, M1) |
+| `F3D_FS8B.m` | 3D best-fitting model, S8B model with rectification: neural vs model DVs |
+| `FS8A.m` | S8A kernel asymmetry of the model with rectification |
+| `FS9D_E.m` | S9D-E model DVs and decision time, collapsing vs fixed bound |
 
-This function estimates model parameters by maximizing the likelihood of the observed behavioral responses.
+### Figure_4 (association cortex)
 
-The fitting framework includes:
+| Script | Panels |
+|---|---|
+| `ROI_selection_TableS1.m` | selection of the ROIs (three criteria), Table S1 |
+| `FS5.m` | S5A-B characterization of the selected ROIs |
+| `F4_A_D_F5_A_B.m` | 4A-D and 5A-B decoding maps, normalized DVs, ramp onset, correlation matrices |
 
-* Model-specific cost functions.
-* Model-specific simulation functions.
-* Parameter optimization routines.
+### Figure_5 (residual DVs)
 
-### Model simulations
-
-The function:
-
-```text
-model_simulation.m
-```
-
-uses fitted model parameters to generate simulated behavioral responses. These simulations are used to generate the model predictions shown throughout Figure 1 and associated supplementary figures.
-
-### Decision-variable simulations
-
-The function:
-
-```text
-leaky_integrator_simulations.m
-```
-
-simulates model decision variables. Unlike the fitting procedure, these simulations use a temporal resolution that is ten times finer than the original stimulus sampling rate. This higher-resolution simulation allows detailed characterization of accumulation dynamics throughout the decision process.
-
-The resulting decision variables are used for the model-based analyses presented in:
-
-* Figure 2
-* Figure 3
-* Supplementary Figure S5
-* Supplementary Figure S6
+| Script | Panels |
+|---|---|
+| `F5_D_FS11_A_D_F.m` | 5D, S11A-D, S11F residual DVs of winning and losing areas |
 
 ---
 
-# Neural Decoding
+## Functions
 
-The neural decoding analyses are implemented in:
+| Function | Use |
+|---|---|
+| `leaky_integrator_simulations_fine.m` | accumulator model simulated in 10 ms steps with the fitted parameters |
+| `model_simulation.m` | accumulator model with the 10-sample time step of the fits (Figure 1D-E) |
+| `absorb_bound_dvs.m` | absorbing bound on simulated accumulators |
+| `cluster_perm_1samp.m` | cluster-based permutation test against zero |
+| `decoder/` | decoders run on the source-reconstructed MEG data (not included) |
+| `model_fit/` | model fitting (`model_fit.m`) and the 19 models |
 
-```text
-functions/decoder/
-```
-
-These functions operate on source-reconstructed MEG activity and generate decoder outputs used throughout the manuscript.
-The decoding framework supports both Unilateral and Bilateral ROI analyses.
-The processed decoder outputs necessary to reproduce the published figures are included in the repository (under data/).
+`Model_recovery/` generates the synthetic datasets of the model recovery and fits them; settings in `recovery_setup.m`.
 
 ---
 
@@ -191,18 +144,6 @@ Brain surface visualizations shown in Figure 2 were generated using the MATLAB G
 https://www.nitrc.org/projects/gifti/
 
 ---
-
-# Reproducing the Figures
-
-1. Clone this repository.
-2. Download the datasets from Figshare.
-3. Place the downloaded data in the `data/` directory.
-4. Install the required external toolboxes.
-5. Add the `functions/` directory to the MATLAB path.
-6. Run the scripts contained in the corresponding `Figure_*` directories.
-
-The figure scripts are organized to reproduce the analyses reported in the manuscript.
-
 ---
 
 # Citation

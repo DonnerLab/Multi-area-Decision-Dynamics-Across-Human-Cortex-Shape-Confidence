@@ -1,185 +1,137 @@
 %% =======================================================================
-% Model comparison: Mean Squared Error (MSE)
+% Figure S2B
+%
 %% =======================================================================
 
-clearvars
+clear all
+close all
 
-%% Paths
+
+%% =======================================================================
+% PATHS
+%% =======================================================================
 
 % Folder where this script is located
 scriptFolder = fileparts(mfilename('fullpath'));
+if isempty(scriptFolder), scriptFolder = pwd; end
 
-% Go up two folders
-repoRoot = (fileparts(scriptFolder));
+% Go up one folder (repository root)
+projectFolder = fileparts(scriptFolder);
 
-% Standard project paths
-dataFolder      = fullfile(repoRoot, 'data');
-modelFolder     = fullfile(dataFolder, 'model', 'results');
-functionsFolder = fullfile(repoRoot, 'functions');
+% Fits of the synthetic datasets: rec_g09_d<dataset>_f<fitted model>.mat
+recoveryFolder = fullfile(projectFolder, 'data', 'model', 'recovery');
 
-% Add functions (including VBA toolbox if stored here)
-addpath(genpath(functionsFolder));
+%% =======================================================================
+% SETTINGS
+%% =======================================================================
 
-%% Settings
+generatingModel = 9;
+fittedModels    = [3 6 9 11 14 18 19];
 
-nModels   = 19;
-nSubjects = 20;
+nModels = numel(fittedModels);
 
-colors_model = autumn(10);
-colors_model = repmat(colors_model, 2, 1);
 
-%% Compute MSE
+%% =======================================================================
+% LOAD THE BIC OF EVERY DATASET AND FITTED MODEL
+%% =======================================================================
 
-figure(3)
-hold on
+files = dir(fullfile(recoveryFolder, ['rec_g' sprintf('%02d',generatingModel) '_d*_f*.mat']));
 
-for model_n = 1:nModels
+datasetNumber = nan(numel(files),1);
+fittedNumber  = nan(numel(files),1);
+BIC_file      = nan(numel(files),1);
 
-    All_MSE = nan(nSubjects,1);
+for k = 1:numel(files)
 
-    for s = 1:nSubjects
+    numbers = sscanf(files(k).name, ['rec_g' sprintf('%02d',generatingModel) '_d%d_f%d.mat']);
 
-        load(fullfile(modelFolder, ...
-            sprintf('All_data_model_%d_sbj_%d.mat', model_n, s)));
+    datasetNumber(k) = numbers(1);
+    fittedNumber(k)  = numbers(2);
 
-        %% Extract variables
-
-        Side = double(mean(All_right,2) > mean(All_left,2));
-        Side(Side == 0) = -1;
-
-        Conf_data_sbj = Real_data(:,2)';
-        All_GM_sbj    = Real_data(:,4);
-
-        All_left_sbj  = All_left;
-        All_right_sbj = All_right;
-
-        % Predicted probabilities
-        All_prob_sbj = abs(All_Conf);
-
-        % Model choice probabilities
-        All_ch_model = sum(All_prob_sbj(:,1:2),2);
-
-        % Data choices and RT
-        All_RT      = Real_data(:,3); 
-        All_ch_data = Real_data(:,1);
-
-        %% Contrast fluctuations around generative mean
-
-        All_right = All_right_sbj - (0.5 + All_GM_sbj ./ 2);
-        All_left  = All_left_sbj  - (0.5 - All_GM_sbj ./ 2);
-
-        %% Confidence reports
-
-        All_Conf_Data = Conf_data_sbj' - 1;
-
-        % Simulated choice/confidence reports from model
-        nTrials = size(All_ch_model,1);
-        All_cc = zeros(nTrials,100,4);
-
-        for trial = 1:nTrials
-            All_cc(trial,:,:) = mnrnd(1, All_prob_sbj(trial,:), 100);
-        end
-
-        %% Trial categories: model
-
-        id_1_1 = find(All_cc(:,:,1) == 1);
-        id_1_0 = find(All_cc(:,:,2) == 1);
-        id_0_1 = find(All_cc(:,:,3) == 1);
-        id_0_0 = find(All_cc(:,:,4) == 1);
-
-        %% Trial categories: data
-
-        id_1_1_d = find(All_ch_data == 1 & All_Conf_Data == 1);
-        id_1_0_d = find(All_ch_data == 1 & All_Conf_Data == 0);
-        id_0_1_d = find(All_ch_data == 0 & All_Conf_Data == 1);
-        id_0_0_d = find(All_ch_data == 0 & All_Conf_Data == 0);
-
-        %% Confidence kernels
-
-        All_right_all = All_right;
-        All_left_all  = All_left;
-
-        datapoints_1 = [];
-        datapoints_2 = [];
-        datapoints_3 = [];
-        datapoints_4 = [];
-
-        model_1 = [];
-        model_2 = [];
-        model_3 = [];
-        model_4 = [];
-
-        for samp = 1:10
-
-            All_right = repmat(All_right_all(:,samp),100,4);
-            All_left  = repmat(All_left_all(:,samp),100,4);
-
-            % Data
-
-            datapoints_1 = [datapoints_1; ...
-                mean([mean(mean(All_right(id_1_1_d),1),3); ...
-                      mean(mean(All_left(id_0_1_d),1),3)])];
-
-            datapoints_2 = [datapoints_2; ...
-                mean([mean(mean(All_right(id_0_1_d),1),3); ...
-                      mean(mean(All_left(id_1_1_d),1),3)])];
-
-            datapoints_3 = [datapoints_3; ...
-                mean([mean(mean(All_right(id_1_0_d),1),3); ...
-                      mean(mean(All_left(id_0_0_d),1),3)])];
-
-            datapoints_4 = [datapoints_4; ...
-                mean([mean(mean(All_right(id_0_0_d),1),3); ...
-                      mean(mean(All_left(id_1_0_d),1),3)])];
-
-            % Model
-
-            model_1 = [model_1; ...
-                mean([mean(mean(All_right(id_1_1),1),3); ...
-                      mean(mean(All_left(id_0_1),1),3)])];
-
-            model_2 = [model_2; ...
-                mean([mean(mean(All_right(id_0_1),1),3); ...
-                      mean(mean(All_left(id_1_1),1),3)])];
-
-            model_3 = [model_3; ...
-                mean([mean(mean(All_right(id_1_0),1),3); ...
-                      mean(mean(All_left(id_0_0),1),3)])];
-
-            model_4 = [model_4; ...
-                mean([mean(mean(All_right(id_0_0),1),3); ...
-                      mean(mean(All_left(id_1_0),1),3)])];
-
-        end
-
-        %% Mean squared error
-
-        MSE_1 = mean((datapoints_1 - model_1).^2);
-        MSE_2 = mean((datapoints_2 - model_2).^2);
-        MSE_3 = mean((datapoints_3 - model_3).^2);
-        MSE_4 = mean((datapoints_4 - model_4).^2);
-
-        All_MSE(s) = MSE_1 + MSE_2 + MSE_3 + MSE_4;
-
-    end
-
-    %% Plot
-
-    bar(model_n, mean(All_MSE), ...
-        'FaceColor', colors_model(model_n,:), ...
-        'FaceAlpha', 1);
-
-    errorbar(model_n, ...
-        mean(All_MSE), ...
-        std(All_MSE) / sqrt(nSubjects), ...
-        'Color', colors_model(model_n,:), ...
-        'LineStyle', 'none');
+    fit = load(fullfile(recoveryFolder, files(k).name), 'BIC');
+    BIC_file(k) = fit.BIC;
 
 end
 
-ylabel('MSE')
+% Keep the datasets fitted with all 7 models
+datasets = unique(datasetNumber)';
+complete = false(size(datasets));
 
-set(gca, ...
-    'FontSize', 15, ...
-    'Box', 'off', ...
-    'TickDir', 'out');
+for k = 1:numel(datasets)
+    complete(k) = all(ismember(fittedModels, fittedNumber(datasetNumber == datasets(k))));
+end
+
+datasets  = datasets(complete);
+nDatasets = numel(datasets);
+
+% BIC: datasets x fitted models
+BIC = nan(nDatasets,nModels);
+
+for k = 1:nDatasets
+    for model = 1:nModels
+        BIC(k,model) = BIC_file(datasetNumber == datasets(k) & fittedNumber == fittedModels(model));
+    end
+end
+
+
+%% =======================================================================
+% WINNING MODEL AND BIC DIFFERENCE TO MODEL 9
+%% =======================================================================
+
+[~, winner] = min(BIC, [], 2);
+nWins = accumarray(winner, 1, [nModels 1])';
+
+deltaBIC      = BIC - BIC(:, fittedModels == generatingModel);
+deltaBIC_mean = mean(deltaBIC,1);
+deltaBIC_sem  = std(deltaBIC,0,1) ./ sqrt(nDatasets);
+
+
+%% =======================================================================
+% FIGURE (Figure S2B)
+%% =======================================================================
+
+modelNames = strcat('Model', {' '}, arrayfun(@num2str, fittedModels, 'UniformOutput', false));
+
+barColors = repmat([0.75 0.75 0.75], nModels, 1);
+barColors(fittedModels == generatingModel,:) = [0.85 0.2 0.2];
+
+figure('Color', 'w', 'Position', [100 100 760 380]);
+
+% ---------------------------------------------------------------
+% Left: number of datasets won
+% ---------------------------------------------------------------
+
+subplot(1,2,1)
+hold on
+
+for model = 1:nModels
+
+    barh(model, nWins(model), 0.6, 'FaceColor', barColors(model,:), 'EdgeColor', 'none');
+
+    text(nWins(model) + 1, model, sprintf('%d/%d', nWins(model), nDatasets), ...
+        'VerticalAlignment', 'middle', 'FontSize', 10);
+
+end
+
+set(gca, 'YTick', 1:nModels, 'YTickLabel', modelNames, 'YDir', 'reverse', ...
+    'XAxisLocation', 'top', 'Box', 'off', 'TickDir', 'out', 'FontSize', 11);
+ylim([0.4 nModels+0.6])
+xlim([0 100])
+xlabel('Number of datasets won')
+
+% ---------------------------------------------------------------
+% Right: BIC difference to model 9
+% ---------------------------------------------------------------
+
+subplot(1,2,2)
+hold on
+
+barh(1:nModels, deltaBIC_mean, 0.6, 'FaceColor', [0.6 0.6 0.6], 'EdgeColor', 'none');
+
+errorbar(deltaBIC_mean, 1:nModels, deltaBIC_sem, 'horizontal', ...
+    'LineStyle', 'none', 'Color', 'k', 'LineWidth', 1);
+
+set(gca, 'YTick', 1:nModels, 'YTickLabel', [], 'YDir', 'reverse', ...
+    'XAxisLocation', 'top', 'Box', 'off', 'TickDir', 'out', 'FontSize', 11);
+ylim([0.4 nModels+0.6])
+xlabel('\DeltaBIC (model - model 9)')

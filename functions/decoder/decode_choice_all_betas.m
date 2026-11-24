@@ -1,222 +1,165 @@
-function Decoder_Performance = decode_choice_all_betas(subject,sessions,Rec)
+function decode_choice_all_betas(subject, sessions, Rec)
+%% =======================================================================
+% Choice decoder on all vertices of PMd/M1 (areas 4, 6a, 6d, both
+% hemispheres): decoder weights of each vertex (Figure 2E)
+%
+% Inputs:
+%   subject  - subject number (e.g. 1 for S01)
+%   sessions - session number
+%   Rec      - recording number(s) of the session
+%
+% Output:
+%   data/decoder_output/all_VX/
+%     <subject>_train_CHOICE_decoder_session<n>_PCA_PMd_M1_SINGLETRIAL.mat
+%     (Prob_Performance: 1 x time x vertices, decoder weights)
+%
+%% =======================================================================
 
 
-Extra_sessions=[1,2,4,5,7,0,11,12,15,17,18,10,0,0,0,0,0,0,0,0,0];
+%% =======================================================================
+% PATHS
+%% =======================================================================
 
-% if session 1 was re-an use extra session
-if sessions==1 & sum(Extra_sessions==subject)==1
-    sessions=11;
+erfFolder    = '~/Desktop/2AFC/ERF';
+trialsFolder = '~/Desktop/2AFC/trials';
+
+functionFolder = fileparts(mfilename('fullpath'));
+outputFolder   = fullfile(fileparts(fileparts(functionFolder)), 'data', 'decoder_output', 'all_VX');
+
+
+%% =======================================================================
+% SETTINGS
+%% =======================================================================
+
+% Subject ID; participants with an additional session have session 1
+% stored as session 11
+subjectNumber = subject;
+subject = sprintf('S%02d', subjectNumber);
+
+if sessions == 1 && any([1,2,4,5,7,11,12,15,17,18,10] == subjectNumber)
+    sessions = 11;
 end
 
-% areas from which to decode
-area={'4','6a','6d'};
-
-agg_dir='~/Desktop/2AFC/AGG/400/matlab_pairs/';
-behav_dir='~/Desktop/2AFC/trials/';
-
-addpath('~/Desktop/2AFC/Analyses/liblinear-2.45/matlab')
-addpath('~/aletoso/Desktop/2AFC/trials/')
-
-if subject<10
-    subject=['S0',num2str(subject)];
-else
-    subject=['S',num2str(subject)];
-end
+areas       = {'4','6a','6d'};
+hemispheres = {'l','r'};
 
 
-TFR_area_L_all=[];
-All_ERF_R=[];
-All_Behavior=[];
-Samples=[];
+%% =======================================================================
+% LOAD THE MEG DATA AND THE BEHAVIOR
+%
+% meg: trials x vertices x time
+%% =======================================================================
 
+meg      = [];
+behavior = [];
 
-sides={'l','r'};
+for recordingNumber = Rec(:)'
 
-%  load relevant ERF and Behavioral data
-
-for ses=1:size(sessions,2)
-    for r=1:size(Rec,2)
-        
-        cd('~/Desktop/2AFC/ERF/')
-        
-        path=['~/Desktop/2AFC/ERF/',subject,'SES',num2str(sessions(ses)),'_',num2str(Rec(r)),'_',cell2mat(area(1)),'_ERF_r.mat'];
-        
-        if isfile(path)
-            
-            All_ERF=[];
-            for side=1:2
-                
-                %load ERF from subject s and concatenate across areas and
-                %sessions
-                
-                
-                cd('~/Desktop/2AFC/ERF/')
-                
-                for i=1:size(area,2)
-                    path=['~/Desktop/2AFC/ERF/',subject,'SES',num2str(sessions(ses)),'_',num2str(Rec(r)),'_',cell2mat(area(i)),'_ERF_',cell2mat(sides(side)),'.mat'];
-                    if isfile(path)
-                        
-                        load(['~/Desktop/2AFC/ERF/',subject,'SES',num2str(sessions(ses)),'_',num2str(Rec(r)),'_',cell2mat(area(i)),'_ERF_',cell2mat(sides(side)),'.mat']);
-                        % erf is trialsXvertexXtime
-                        erf=(comb_dict{1,1}.erfdata(:,:,:));
-                        
-                        
-                        if isempty(erf)
-                            
-                        else
-                            All_ERF=cat(2,erf,All_ERF);
-                            
-                        end
-                        
-                        
-                    else
-                    end
-                    
-                    
-                end
-                % save N of vertices per hemifield
-                n_vx_side(side,:)=size(All_ERF,2);
-            end
-            
-            % load behavioral results
-            cd('~/Desktop/2AFC/trials/')
-            if isfile(path)
-                    load(['~/Desktop/2AFC/trials/',subject,'_',num2str(sessions(ses)),'_',num2str(Rec(r)),'_trials.mat']);
-                
-            else
-            end
-            
-            data.trial=All_ERF;
-            data.label=cellstr(num2str([1:size(All_ERF,2)]'));
-            
-            All_ERF=permute(All_ERF,[3,1,2]);
-            All_ERF=permute(All_ERF,[2,3,1]);
-            
-            % baseline from pre-stim interval
-            All_ERF_R=cat(1,All_ERF_R,abs((All_ERF)-(mean(All_ERF(:,:,1:201),3))));
-            All_Behavior=[All_Behavior;data.trialinfo];
-            
-            
-            
-            
-            
-        else
-        end
+    if ~isfile(fullfile(erfFolder, [subject 'SES' num2str(sessions) '_' num2str(recordingNumber) '_' areas{1} '_ERF_r.mat']))
+        continue
     end
+
+    recordingMEG = [];
+
+    for hemisphere = 1:2
+
+        for area = 1:numel(areas)
+            erfFile = fullfile(erfFolder, [subject 'SES' num2str(sessions) '_' num2str(recordingNumber) ...
+                '_' areas{area} '_ERF_' hemispheres{hemisphere} '.mat']);
+            if isfile(erfFile)
+                ERF = load(erfFile);
+                recordingMEG = cat(2, ERF.comb_dict{1,1}.erfdata, recordingMEG);
+            end
+        end
+
+        % Number of vertices after this hemisphere
+        n_vx_side(hemisphere,:) = size(recordingMEG,2);
+
+    end
+
+    load(fullfile(trialsFolder, [subject '_' num2str(sessions) '_' num2str(recordingNumber) '_trials.mat']));
+
+    %  baseline-corrected activity
+    meg      = cat(1, meg, (recordingMEG - mean(recordingMEG(:,:,1:201),3)));
+    behavior = [behavior; data.trialinfo];
+
 end
 
 
+%% =======================================================================
+% DECODING, TIME POINT BY TIME POINT
+%% =======================================================================
 
-tic
+% Choice: +1 = right, -1 = left
+Y_all = double(behavior(:,2));
+Y_all(Y_all == 0) = -1;
 
+folds = cvpartition(size(behavior,1), 'Kfold', 10);
 
+nTime = size(meg,3);
 
-    
-    
-        % extract trial index for 10-fold cv
-        id_cv=cvpartition(size(All_Behavior,1),'Kfold',10);
-        
-        % train and test decoder separately for each time t
-        for t=1:size(All_ERF_R,3)
-            
-            X_both=[];Y=[];
-            
-            % source-reconstructed ERF
-            X=[All_ERF_R(:,:,t)];
-            
-            
-            X_all=X;
-            
-                % choice           
-            Y_all=double(All_Behavior(:,2));
-            Y_all(Y_all==0)=-1;
-            
-            yFit_all=[];real_Y=[];Perf_all=[];
-            Beta_all=[];All_samples=[];All_Choices=[];block_type=[];
-            
-            % 10 folded cv
-            for cv=1:10
-                
-                Y=[];X=[];
-                
-                % extract training/test trials for each cv fold
-                id_train=training(id_cv,cv);
-                id_test=test(id_cv,cv);
-                
-                Y=Y_all(id_train);
-                X=X_all(id_train,:);
-                
-                % up-sample minority choice category in traning data
-                id_left=find(Y==-1);id_right=find(Y==1);
-                if size(id_left,1)>size(id_right,1)
-                    n_extra=size(id_left,1)-size(id_right,1);
-                    id_extra=id_right(randi(size(id_right,1),n_extra,1));
-                else
-                    n_extra=size(id_right,1)-size(id_left,1);
-                    id_extra=id_left(randi(size(id_left,1),n_extra,1));
-                end
-                
-                Y=[Y;Y(id_extra)];
-                X=[X;X(id_extra,:)];
-                
-                
-                % z-score training X data
-                [Z,mu,sigma]=zscore(X);
-                
-                % train logistic model
-                Mdl=fitclinear(zscore(X),(Y),'Learner','logistic');%'logiRegularization','ridge','Lambda',[1]);
-                
-                
-                % predict test choices (z-score test X data using mu/sigma from train data)
-                Y_fit=predict(Mdl,normalize(X_all(id_test,:),'center',mu,'scale',sigma));
-                
-                % extract each vx beta           
-                Beta_fit=Mdl.Beta;
+Prob_Performance    = nan(1,nTime,size(meg,2));   % decoder weights
+Decoder_Performance = nan(1,nTime);               % decoding accuracy
 
-                % concatenate alcross cv-fold real test Y, predicted Y,
-                % prob of choice==1, Stimulus ID, block type
-                yFit_cv=Y_fit;
-                test_y=[];
-                test_y=(Y_all(id_test));
-                yFit_all=[yFit_all;yFit_cv];
-                
-                real_Y=[real_Y;test_y];
-                
-                Beta_all=[Beta_all;Beta_fit'];
-                
-                All_samples=[All_samples;All_Behavior(id_test,16:35)];
-                All_Choices=[All_Choices;All_Behavior(id_test,2)];
-                block_type=[block_type;All_Behavior(id_test,13)];
-                
-            end
-            
-            
-            % Calculate performance
-            Perfs=mean((yFit_all)==(real_Y));
-            
-            Beta(1,t,:)=mean(Beta_all,1);
-            
-            Decoder_Performance_bt(1,t,1)=Perfs(1);
+for time = 1:nTime
+
+    X_all = meg(:,:,time);
+
+    predictedChoice = [];
+    testChoice      = [];
+    foldWeights     = [];
+
+    for fold = 1:10
+
+        trainTrials = training(folds,fold);
+        testTrials  = test(folds,fold);
+
+        X = X_all(trainTrials,:);
+        Y = Y_all(trainTrials);
+
+        % Upsample the smaller class
+        negative = find(Y == -1);
+        positive = find(Y ==  1);
+
+        if numel(negative) > numel(positive)
+            extra = positive(randi(numel(positive), numel(negative) - numel(positive), 1));
+        else
+            extra = negative(randi(numel(negative), numel(positive) - numel(negative), 1));
         end
-    
+
+        X = [X; X(extra,:)];
+        Y = [Y; Y(extra)];
+
+        % z-score with the training mean and SD, logistic regression
+        [X, mu, sigma] = zscore(X);
+        model = fitclinear(X, Y, 'Learner', 'logistic');
+
+        predictedChoice = [predictedChoice; predict(model, normalize(X_all(testTrials,:), 'center', mu, 'scale', sigma))];
+        testChoice      = [testChoice; Y_all(testTrials)];
+        foldWeights     = [foldWeights; model.Beta'];
+
+    end
+
+    Decoder_Performance(time)  = mean(predictedChoice == testChoice);
+    Prob_Performance(1,time,:) = mean(foldWeights,1);
+
+end
 
 
+%% =======================================================================
+% SAVE
+%% =======================================================================
 
-% save
+if ~exist(outputFolder,'dir')
+    mkdir(outputFolder);
+end
 
-Decoder_Performance=(Decoder_Performance_bt);
+All_samples  = behavior(:,16:35);
+All_Choices  = behavior(:,2);
+block_type   = behavior(:,13);
+All_Behavior = behavior;
 
-cd   ~/Desktop/2AFC/Analyses/Decoder_Final/ERF/PCA/all_Vx
-name=[(subject),'_train_CHOICE_decoder_session',num2str(sessions),'_PCA_PMd_M1_SINGLETRIAL.mat'];
-
-save(name,'Beta','All_samples','All_Choices','block_type','All_Behavior','n_vx_side')
-
-cd   ~/Desktop/2AFC/Analyses/Decoder_Final/ERF/PCA/all_Vx
-name=[(subject),'_CHOICE_decoder_session',num2str(sessions),'_PCA_PMd_M1.mat'];
-
-save(name,'Decoder_Performance')
-
-toc
-delete(gcp('nocreate'));
+save(fullfile(outputFolder, [subject '_train_CHOICE_decoder_session' num2str(sessions) '_PCA_PMd_M1_SINGLETRIAL.mat']), ...
+    'Prob_Performance','Decoder_Performance','All_samples','All_Choices','block_type','All_Behavior','n_vx_side')
 
 end

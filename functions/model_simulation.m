@@ -1,4 +1,4 @@
-function [  Final_DV P_left P_right Choices Confidence output thr_collapse Confidence_end_2 Confidence_left Confidence_right P_cross] = model_simulation(pars,data,bound)
+function [  Final_DV P_left P_right Choices Confidence output thr_collapse Confidence_end_2 Confidence_left Confidence_right P_cross] = model_simulation(pars,data,bound,n_simulations)
 
 %% simulates N times a model with parameters (pars)
 % model types: - 1: no bound, no asymmetruc oocnfidence weight, no FFI
@@ -6,8 +6,13 @@ function [  Final_DV P_left P_right Choices Confidence output thr_collapse Confi
               % -3: collapsing bound, FFI, no asymmetry coonf weight
                % -4: collapsing bound, FFI,  asymmetry coonf weight (best model)
  
+%
+% n_simulations (optional): number of stochastic simulations per trial
+%                           (default: 250)
 %%
-n_simulations=250;
+if nargin<4 || isempty(n_simulations)
+    n_simulations=250;
+end
 
 tau_a=(pars(3)).*15+0.0001;
 Adapt=pars(4)+(1-pars(4))*exp(-(0:9)./tau_a);

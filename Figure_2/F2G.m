@@ -1,248 +1,167 @@
 %% =======================================================================
-% Inter-hemispheric cross-correlation of decoder output
-%
 % Figure 2G
+%
+% Time course of the trial-averaged winning and losing neural DV
+% (single-hemisphere choice decoders, PMd)
+%
+% PMd = decoder output of areas 6a and 6d averaged
 %% =======================================================================
 
 clear all
 close all
 
+
 %% =======================================================================
-% Paths
+% PATHS
 %% =======================================================================
 
 % Folder where this script is located
 scriptFolder = fileparts(mfilename('fullpath'));
+if isempty(scriptFolder), scriptFolder = pwd; end
 
-% Go up two folders
-projectFolder = fileparts(fileparts(scriptFolder));
+% Go up one folder (repository root)
+projectFolder = fileparts(scriptFolder);
 
-% Decoder output folder
-hemiFolder = fullfile(projectFolder, 'data', 'decoder_output', 'hemi');
+decoderFolder = fullfile(projectFolder, 'data', 'decoder_output', 'PMd_M1_hemi');
 
-% Move to decoder folder
-cd(hemiFolder)
+% Path to functions
+addpath(fullfile(projectFolder, 'functions'));
+
 
 %% =======================================================================
-% Subject information
+% SETTINGS
 %% =======================================================================
 
-SubjectID_2 = { ...
+subjects = { ...
     'S01','S02','S04','S05','S07','S08','S11','S12','S15','S17', ...
     'S18','S10','S06','S19','S20','S21','S22','S23','S24','S25'};
 
-SubjectID = [ ...
-     1,4,6,7,12,15,17,18,11,05, ...
-    19,20,22,10,02,08,24,21,23,25];
+nSubjects = numel(subjects);
 
-sessions = [ ...
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-     1,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6;
-    11,2,3,4,5,6;
-    11,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6;
-     1,2,3,4,5,6];
+% Areas of PMd (decoder output averaged)
+pmdAreas = {'6a','6d'};
+
+% Non-overlapping windows of 5 samples (50 ms); time of the first sample
+% of each window (s from stimulus onset)
+nWindows     = 40;
+windowLength = 5;
+timeAxis     = -0.5:0.05:1.45;
+
+% windows x subjects
+mean_winningDV = nan(nWindows,nSubjects);
+mean_losingDV  = nan(nWindows,nSubjects);
+
 
 %% =======================================================================
-% Analysis parameters
+% MAIN LOOP ACROSS SUBJECTS
 %% =======================================================================
 
-nSubjects = 20;
-nSessions = 6;
-lag       = 10;
+for subject = 1:nSubjects
 
-% Time windows
-idx_baseline = 1:51;
-idx_early    = 51:101;
-idx_late     = 101:151;
-idx_post     = 151:201;
+    files = dir(fullfile(decoderFolder, ...
+        [subjects{subject} '_SES*_l_CHOICEdecoder_' pmdAreas{1} '_all.mat']));
 
-% Xcorr lags
-lagAxis = -100:10:100;
+    % windows x sessions x choice x stimulus category
+    mean_winning_session = nan(nWindows,numel(files),2,2);
+    mean_losing_session  = nan(nWindows,numel(files),2,2);
 
-%% =======================================================================
-% Main loop
-%% =======================================================================
+    for file = 1:numel(files)
 
-for s = 1:nSubjects
+        %% ---------------------------------------------------------------
+        % LOAD DECODER OUTPUT OF BOTH HEMISPHERES (this session)
+        %
+        % Labels from the left-hemisphere files:
+        % Y_all: -1 = left choice, +1 = right choice
+        % stimulus_all: -1 = left > right, +1 = right > left
+        %% ---------------------------------------------------------------
 
-    for ses = 1:nSessions
+        session = sscanf(files(file).name, [subjects{subject} '_SES%d']);
 
-        sessionNumber = ses;
+        DV_right = 0;
+        DV_left  = 0;
 
-        leftFile = sprintf( ...
-            '%s_choice_l_session%d_PMd_M1_decoder_output_100hz.mat', ...
-            SubjectID_2{s}, sessionNumber);
+        for area = 1:numel(pmdAreas)
 
-        rightFile = sprintf( ...
-            '%s_choice_r_session%d_PMd_M1_decoder_output_100hz.mat', ...
-            SubjectID_2{s}, sessionNumber);
+            L = load(fullfile(decoderFolder, sprintf('%s_SES%d_l_CHOICEdecoder_%s_all.mat', ...
+                subjects{subject}, session, pmdAreas{area})));
+            R = load(fullfile(decoderFolder, sprintf('%s_SES%d_r_CHOICEdecoder_%s_all.mat', ...
+                subjects{subject}, session, pmdAreas{area})));
 
-        if ~isfile(leftFile) || ~isfile(rightFile)
-            continue
+            DV_right = DV_right + double(L.log_odds_all) / numel(pmdAreas);
+            DV_left  = DV_left  + double(R.log_odds_all) / numel(pmdAreas);
+
         end
 
-        %% ---------------------------------------------------------------
-        % Load decoder output
-        %% ---------------------------------------------------------------
+        choice   = double(L.Y_all(:));
+        stimulus = double(L.stimulus_all(:));
 
-        load(leftFile)
-        Perf_L = permute(Prob_Performance, [3,2,1]);
+        % Winning DV = DV of the chosen side, losing DV = DV of the other side
+        winningDV = DV_left;
+        losingDV  = DV_right;
+        winningDV(choice == 1,:) = DV_right(choice == 1,:);
+        losingDV(choice == 1,:)  = DV_left(choice == 1,:);
 
-        load(rightFile)
-        Perf_R = permute(Prob_Performance, [3,2,1]);
-
-        % Convert choices: left = 0, right = 1
-        All_Choices(All_Choices == -1) = 0;
-
-        nTrials = size(All_Choices, 1);
 
         %% ---------------------------------------------------------------
-        % Assign winning and losing hemisphere DVs
+        % MEAN ACROSS TRIALS WITHIN EACH CHOICE x STIMULUS CATEGORY
         %% ---------------------------------------------------------------
 
-        DV_win  = [];
-        DV_lose = [];
+        categoryValues = [-1 1];
 
-        for tr = 1:nTrials
+        for choiceSide = 1:2
+            for stimulusSide = 1:2
 
-            if All_Choices(tr) == 0
-                % left choice - right hemi wins
-                DV_win(tr,:)  = Perf_R(tr,:);
-                DV_lose(tr,:) = Perf_L(tr,:);
-            else
-                % right choice - left hemi wins
-                DV_win(tr,:)  = Perf_L(tr,:);
-                DV_lose(tr,:) = Perf_R(tr,:);
+                trials = choice == categoryValues(choiceSide) & ...
+                         stimulus == categoryValues(stimulusSide);
+
+                if sum(trials) < 2
+                    continue
+                end
+
+                for window = 1:nWindows
+                    windowSamples = (1:windowLength) + windowLength*(window-1);
+                    mean_winning_session(window,file,choiceSide,stimulusSide) = ...
+                        mean(mean(winningDV(trials,windowSamples),2));
+                    mean_losing_session(window,file,choiceSide,stimulusSide) = ...
+                        mean(mean(losingDV(trials,windowSamples),2));
+                end
+
             end
         end
 
-        %% ---------------------------------------------------------------
-        % Trial-wise cross-correlations
-        %% ---------------------------------------------------------------
-
-        All_corr_base  = [];
-        All_corr_early = [];
-        All_corr_late  = [];
-        All_corr_post  = [];
-
-        for tr = 1:nTrials
-
-            % Baseline
-            All_corr_base(:,tr) = xcorr( ...
-                zscore(DV_win(tr,idx_baseline))', ...
-                zscore(DV_lose(tr,idx_baseline))', ...
-                lag, "normalized");
-
-            % Early
-            All_corr_early(:,tr) = xcorr( ...
-                zscore(DV_win(tr,idx_early))', ...
-                zscore(DV_lose(tr,idx_early))', ...
-                lag, "normalized");
-
-            % Late
-            All_corr_late(:,tr) = xcorr( ...
-                zscore(DV_win(tr,idx_late))', ...
-                zscore(DV_lose(tr,idx_late))', ...
-                lag, "normalized");
-
-            % Post
-            All_corr_post(:,tr) = xcorr( ...
-                zscore(DV_win(tr,idx_post))', ...
-                zscore(DV_lose(tr,idx_post))', ...
-                lag, "normalized");
-        end
-
-        %% ---------------------------------------------------------------
-        % Store average correlograms
-        %% ---------------------------------------------------------------
-
-        All_correlograms(:,:,s,1,ses) = [ ...
-            mean(All_corr_base,2), ...
-            mean(All_corr_early,2), ...
-            mean(All_corr_late,2), ...
-            mean(All_corr_post,2)];
     end
+
+    % Average across categories and sessions
+    mean_winningDV(:,subject) = nanmean(nanmean(nanmean(mean_winning_session,4),3),2);
+    mean_losingDV(:,subject)  = nanmean(nanmean(nanmean(mean_losing_session,4),3),2);
+
 end
 
+
 %% =======================================================================
-% Plot baseline-corrected cross-correlograms
+% FIGURE (Figure 2G)
 %% =======================================================================
 
-colors = winter(6);
-colors(1,:) = [0 0 0];
-
-figure
+figure('Color','w');
 hold on
 
-for epoch = 2:4
+shadedErrorBar( ...
+    timeAxis, ...
+    nanmean(mean_winningDV,2), ...
+    nanstd(mean_winningDV,0,2) ./ sqrt(nSubjects), ...
+    'lineProps', {'-','color','k'});
 
-    % Baseline correction
-    All_corrgram = reshape( ...
-        mean( ...
-            All_correlograms(:,epoch,:,:,1) - ...
-            All_correlograms(:,1,:,:,1), 4), ...
-        21, 20);
+shadedErrorBar( ...
+    timeAxis, ...
+    nanmean(mean_losingDV,2), ...
+    nanstd(mean_losingDV,0,2) ./ sqrt(nSubjects), ...
+    'lineProps', {'-','color','b'});
 
-    All_corrgram = All_corrgram';
+yline(0,'--','color',[0.5 0.5 0.5]);
 
-    %% ---------------------------------------------------------------
-    % Plot shaded error bar
-    %% ---------------------------------------------------------------
-
-    shadedErrorBar( ...
-        lagAxis, ...
-        nanmean(All_corrgram,1), ...
-        std(All_corrgram)./sqrt(20), ...
-        'lineProps', {'-','color',colors(epoch,:)});
-
-    %% ---------------------------------------------------------------
-    % Permutation test per lag
-    %% ---------------------------------------------------------------
-
-    P = nan(1,21);
-
-    for ii = 1:21
-        P(ii) = permutationTest( ...
-            All_corrgram(:,ii), ...
-            zeros(20,1), ...
-            10000);
-    end
-
-    % FDR correction
-    All_P(epoch,:) = double(fdr_bh(P,0.05));
-    All_P(All_P == 0) = -10;
-
-    %% ---------------------------------------------------------------
-    % Significance markers
-    %% ---------------------------------------------------------------
-
-    scatter( ...
-        lagAxis, ...
-        All_P(epoch,:) .* (-0.13 - (0.01*(epoch-1))), ...
-        50, ...
-        colors(epoch,:), ...
-        'filled', ...
-        'square');
-end
-
-ylim([-0.17 0.01])
-
-xlabel('Lag (ms)')
-ylabel('Cross-correlation (baseline corrected)')
-set(gca,'fontsize',15)
+xticks([-0.5 0 1 1.5])
+xlabel('Time from stimulus onset (s)')
+ylabel('Neural DV (log odds)')
+title('Winning DV (black), losing DV (blue)')
 box off
+set(gca,'fontsize',15)
